@@ -1,4 +1,4 @@
-FROM --platform=$TARGETPLATFORM docker.io/node:20-slim AS base
+FROM docker.io/node:20-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 RUN corepack enable
