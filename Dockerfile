@@ -15,4 +15,4 @@ RUN pnpm run build
 FROM base
 COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=build /app/build /app/build
-CMD ["node", "build"]
+ENTRYPOINT ["node", "/app/build"]
