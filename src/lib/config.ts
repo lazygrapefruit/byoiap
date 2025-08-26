@@ -38,7 +38,7 @@ export type Config = Static<typeof Config>;
 
 const FIXED_CONFIG = (() => {
     if (!process.env.FIXED_CONFIG) return undefined;
-    return Value.Parse(Config, process.env.FIXED_CONFIG);
+    return configDeserializeB64(process.env.FIXED_CONFIG);
 })();
 
 const encoder = new CborEncoder();
