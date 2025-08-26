@@ -5,6 +5,7 @@ import { Value } from '@sinclair/typebox/value';
 import sax from "sax";
 import { Readable } from "node:stream";
 import assert from "node:assert";
+import type { SetOptional, Writable } from "type-fest";
 
 const ID = "newznab";
 
@@ -156,12 +157,9 @@ async function getCaps(config: NewznabConfig) {
     return parseState.data;
 }
 
-type Optional<T, K extends keyof T> = Pick<Partial<T>, K> & Omit<T, K>;
-type Writeable<T> = { -readonly [K in keyof T]: T[K]; };
-
 interface QueryParseData {
     readonly items: IndexedItem[];
-    activeItem?: Optional<Writeable<IndexedItem>, "url" | "publishDate" | "title">;
+    activeItem?: SetOptional<Writable<IndexedItem>, "url" | "publishDate" | "title">;
 }
 
 const ATTRIBUTE_HANDLERS: Record<string, (target: Required<QueryParseData>["activeItem"], value: string) => void> = {

@@ -1,4 +1,6 @@
 import TTLCache from "@isaacs/ttlcache";
+import assert from "assert";
+import type { Writable } from "type-fest";
 
 export class MovieId {
     constructor(public readonly imdbId: string) { }
@@ -28,9 +30,11 @@ interface TvMazeShow {
     };
 }
 
-interface TvMazeEpisode {
-    season: number;
-    number: number;
+interface CinemetaSeries {
+    readonly videos: {
+        readonly season: number;
+        readonly episode: number;
+    }[],
 }
 
 interface ShowData {
@@ -55,35 +59,47 @@ const _showDataCache = new TTLCache<string, ShowData | Promise<ShowData>>({
     },
 });
 
-// TODO: Handle exceptions and retries
-async function fetchShowData(imdbId: string): Promise<ShowData> {
-    const imdbLookupResponse = await fetch(`https://api.tvmaze.com/lookup/shows?imdb=${imdbId}`);
-    const imdbLookupJson: TvMazeShow | null = await imdbLookupResponse.json();
-    if (!imdbLookupJson) {
-        console.log(`Failed to find TVMaze entry for ${imdbId}`);
-        return { imdbId, episodesPerSeason: [] };
+async function insertFromTvMaze(imdbId: string, data: Writable<ShowData>) {
+    const tvmazeLookup = await fetch(`https://api.tvmaze.com/lookup/shows?imdb=${imdbId}`);
+    const lookupJson: TvMazeShow | null = await tvmazeLookup.json();
+    if (!lookupJson) {
+        console.warn(`Could not find TvMaze entry for ${imdbId}`);
+        return;
     }
 
-    const episodeLookup = await fetch(`https://api.tvmaze.com/shows/${imdbLookupJson.id}/episodes`);
-    const episodeLookupJson: TvMazeEpisode[] = await episodeLookup.json();
+    data.tvMazeId = lookupJson.id;
+    if (lookupJson.externals.thetvdb)
+        data.tvdbId = lookupJson.externals.thetvdb;
+    if (lookupJson.externals.tvrage)
+        data.tvRageId = lookupJson.externals.tvrage;
+}
 
-    const episodesPerSeason: number[] = [];
-    for (const episode of episodeLookupJson) {
+async function insertFromCinemeta(imdbId: string, data: Writable<ShowData>) {
+    const cinemetaResponse = await fetch(`https://v3-cinemeta.strem.io/meta/series/${imdbId}.json`);
+    const cinemetaJson: CinemetaSeries = await cinemetaResponse.json();
+
+    const episodesPerSeason = data.episodesPerSeason;
+    assert(episodesPerSeason.length === 0);
+
+    for (const episode of cinemetaJson.videos) {
         const episodesInSeason = episodesPerSeason[episode.season] ?? 0;
-        episodesPerSeason[episode.season] = Math.max(episode.number, episodesInSeason);
+        episodesPerSeason[episode.season] = Math.max(episode.episode, episodesInSeason);
     }
 
     // Fill any gaps
     for (let i = 0; i < episodesPerSeason.length; ++i)
         episodesPerSeason[i] ??= 0;
+}
 
-    return {
+// TODO: Handle exceptions and retries
+async function fetchShowData(imdbId: string): Promise<ShowData> {
+    const result: Writable<ShowData> = {
         imdbId,
-        tvMazeId: imdbLookupJson.id,
-        tvRageId: imdbLookupJson.externals?.tvrage ?? undefined,
-        tvdbId: imdbLookupJson.externals?.thetvdb ?? undefined,
-        episodesPerSeason,
+        episodesPerSeason: [],
     };
+
+    await Promise.all([insertFromTvMaze(imdbId, result), insertFromCinemeta(imdbId, result)]);
+    return result;
 }
 
 function fetchAndCacheShowData(imdbId: string) {
