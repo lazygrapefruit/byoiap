@@ -39,6 +39,11 @@ function getMatchingCount(str1: string, str2: string) {
     return matching;
 }
 
+function errorAndLog(statusCode: number, message: string): never {
+    console.error(`[error] ${statusCode}: ${message}`);
+    error(statusCode, message);
+}
+
 export const GET: RequestHandler = async ({ url, params }) => {
     console.log("[cachenext]", url.toString());
     const config = await configDeserialize(params.config);
@@ -46,11 +51,11 @@ export const GET: RequestHandler = async ({ url, params }) => {
 
     const indexer = ALL_INDEXERS.get(config.indexer.id);
     if (!indexer)
-        error(400, `${config.indexer.id} does not have a registered indexer`);
+        errorAndLog(400, `${config.indexer.id} does not have a registered indexer`);
 
     const provider = ALL_PROVIDERS.get(config.provider.id);
     if (!provider)
-        error(400, `${config.provider.id} does not have a registered provider`);
+        errorAndLog(400, `${config.provider.id} does not have a registered provider`);
 
     const showId = new ShowId(params.id);
     const showData = await getShowData(showId.imdbId);
@@ -66,7 +71,7 @@ export const GET: RequestHandler = async ({ url, params }) => {
             nextEpisodeSeason += 1;
             nextEpisodeNumber = 1;
             if ((showData.episodesPerSeason[nextEpisodeSeason] ?? 0) < nextEpisodeNumber)
-                error(400, `Unable to find episode following ${params.id}`);
+                errorAndLog(400, `Unable to find episode following ${params.id}`);
         }
 
         // Construct the show id in a less silly way.
@@ -111,7 +116,7 @@ export const GET: RequestHandler = async ({ url, params }) => {
         }
 
         if (!bestItem)
-            return error(400, `Unable to find episode stream matching ${nextEpisodeId}`);
+            errorAndLog(400, `Unable to find episode stream matching ${nextEpisodeId}`);
 
         console.log(`[cachenext] "${title}" + ${i + 1} = "${bestItem.title}"`);
 

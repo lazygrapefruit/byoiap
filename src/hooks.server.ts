@@ -9,6 +9,5 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (!response.headers.has('Access-Control-Allow-Origin'))
         response.headers.set('Access-Control-Allow-Origin', '*');
 
-    console.log(`[handle response] ${event.request.method} ${event.url} -> ${response.status} ${response.statusText}`);
 	return response;
 };
