@@ -31,10 +31,12 @@ interface TvMazeShow {
 }
 
 interface CinemetaSeries {
-    readonly videos: {
-        readonly season: number;
-        readonly episode: number;
-    }[],
+    readonly meta: {
+        readonly videos: {
+            readonly season: number;
+            readonly episode: number;
+        }[];
+    };
 }
 
 interface ShowData {
@@ -81,7 +83,7 @@ async function insertFromCinemeta(imdbId: string, data: Writable<ShowData>) {
     const episodesPerSeason = data.episodesPerSeason;
     assert(episodesPerSeason.length === 0);
 
-    for (const episode of cinemetaJson.videos) {
+    for (const episode of cinemetaJson.meta.videos) {
         const episodesInSeason = episodesPerSeason[episode.season] ?? 0;
         episodesPerSeason[episode.season] = Math.max(episode.episode, episodesInSeason);
     }
