@@ -36,11 +36,6 @@ export const Config = Type.Object({
 });
 export type Config = Static<typeof Config>;
 
-const FIXED_CONFIG = (() => {
-    if (!process.env.FIXED_CONFIG) return undefined;
-    return configDeserializeB64(process.env.FIXED_CONFIG);
-})();
-
 const encoder = new CborEncoder();
 const decoder = new CborDecoderBase();
 const compress = promisify(zlib.brotliCompress);
@@ -55,6 +50,11 @@ async function configDeserializeB64(configStr: string) {
     const decoded = decoder.decode(await decompress(Buffer.from(configStr, "base64url")));
     return Value.Parse(Config, decoded);
 }
+
+const FIXED_CONFIG = (() => {
+    if (!process.env.FIXED_CONFIG) return undefined;
+    return configDeserializeB64(process.env.FIXED_CONFIG);
+})();
 
 function configSerializeFixed() {
     return "fixed";
