@@ -23,8 +23,8 @@ interface ResolveResult {
 }
 
 const _resolveCache = new TTLCache<string, Promise<ResolveResult> | ResolveResult>({
-    max: 10000, // This bound should never be reached, but just helps protect memory usage
-    ttl: 10 * 1000,
+    max: 10000,     // This bound should never be reached, but just helps protect memory usage
+    ttl: MaxAge.PendingBase * 1000,
 });
 
 export const GET: RequestHandler = async (event) => {
