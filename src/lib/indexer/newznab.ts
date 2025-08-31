@@ -240,16 +240,11 @@ export const newznabIndexer = {
             url.searchParams.set("t", "tvsearch");
             url.searchParams.set("season", String(mediaId.season));
             url.searchParams.set("ep", String(mediaId.episode));
-            const showDataPromise = getShowData(mediaId.imdbId);
+            const showData = await getShowData(mediaId.imdbId);
 
-            // If the caps indicate that it accepts an imdbid then waiting for the other
-            // ids to be gathered effectively just slows down reaching out to the indexer.
-            if (!(await capsPromise).tv?.includes("imdbid")) {
-                const showData = await showDataPromise;
-                searchIds.rid = showData.tvRageId;
-                searchIds.tvdbid = showData.tvdbId;
-                searchIds.tvmazeid = showData.tvMazeId;
-            }
+            searchIds.rid = showData.tvRageId;
+            searchIds.tvdbid = showData.tvdbId;
+            searchIds.tvmazeid = showData.tvMazeId;
         }
         else if (mediaId instanceof MovieId) {
             capsKey = "movie";
