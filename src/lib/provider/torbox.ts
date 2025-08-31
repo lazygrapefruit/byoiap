@@ -93,9 +93,10 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
         // TODO: Strip comments from the file. This is because some indexers provide
         // grabs that include comments that include information about the grab request,
         // which fights against the cache.
-        console.log(source.url);
-        const nzb = await fetch(source.url);
-        formData.set("file", await nzb.blob());
+        const nzbResponse = await fetch(source.url);
+        const nzb = await nzbResponse.blob();
+        console.log({ size: nzb.size, type: nzb.type });
+        formData.set("file", nzb);
     }
     else {
         formData.set("link", source.url);
