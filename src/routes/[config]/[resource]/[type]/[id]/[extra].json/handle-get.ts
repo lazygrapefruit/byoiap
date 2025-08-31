@@ -39,7 +39,7 @@ export async function handleGet(url: URL, params: Params) {
         const resp = await addonInterface.get(resource, type, id, extra, config);
         return json(resp, {
             headers: {
-                'cache-control': 'private, max-age=3600',
+                'cache-control': 'private, max-age=60',
             },
         });
     }

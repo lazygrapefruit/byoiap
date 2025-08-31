@@ -26,7 +26,4 @@ While this is just a basic node application that you can build however you want,
 4. Only one indexer and provider are currently supported. It is designed to be extended, but nothing else is currently implemented.
 5. Cache controls are incomplete. This makes some behaviors, such as Stremio fetching the streams for the next episode when starting an episode, entirely wasted work.
 6. The way next episode caching is invoked should be rewritten. It was originally based around a pattern more useful for serverless (ie. serverless functions are often suspended after the response is emitted so to get extra async work to happen something else must be done, such as emitting an event to some kind of queue or even just invoking another serverless function but not awaiting its results).
-7. Cannot use an indexer on localhost. Allowing proxying grabs would fix this, but that has not been built.
-8. Lacking support for prioritization based on language (both audio and subtitle).
-9. Support for deprioritizing, labeling, or fully removing grabs that are known to fail the download.
-10. Support for non-link (ie. file) based grabs. This can be used to allow localhost indexer and hide API key from provider as it no longer needs a grab link.
+7. Lacking support for prioritization based on language (both audio and subtitle).

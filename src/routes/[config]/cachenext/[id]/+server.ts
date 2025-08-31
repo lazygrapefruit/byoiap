@@ -121,9 +121,8 @@ export const GET: RequestHandler = async ({ url, params }) => {
         console.log(`[cachenext] "${title}" + ${i + 1} = "${bestItem.title}"`);
 
         await provider.precache(config.provider, {
-            url: bestItem.url,
-            password: bestItem.password,
             kind: "usenet",
+            ...bestItem,
         });
     }
 

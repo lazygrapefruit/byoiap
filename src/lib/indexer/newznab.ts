@@ -159,13 +159,14 @@ async function getCaps(config: NewznabConfig) {
 
 interface QueryParseData {
     readonly items: IndexedItem[];
-    activeItem?: SetOptional<Writable<IndexedItem>, "url" | "publishDate" | "title">;
+    activeItem?: SetOptional<Writable<IndexedItem>, "guid" | "url" | "publishDate" | "title">;
 }
 
 const ATTRIBUTE_HANDLERS: Record<string, (target: Required<QueryParseData>["activeItem"], value: string) => void> = {
     grabs: (target, value) => target.grabs += Number.parseInt(value),
     language: (target, value) => target.languagesAudio.push(...value.split(" - ")),
     password: (target, value) => target.password = value,
+    size: (target, value) => target.size = Number.parseInt(value),
     subs: (target, value) => target.languagesSubtitles.push(...value.split(" - ")),
     thumbsup: (target, value) => target.votesUp += Number.parseInt(value),
     thumbsdown: (target, value) => target.votesDown += Number.parseInt(value),
@@ -190,6 +191,9 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                         votesUp: 0,
                         votesDown: 0,
                     };
+                },
+                guid: {
+                    [TEXT_HANDLER]: (state, text) => state.activeItem!.guid = text,
                 },
                 link: {
                     [TEXT_HANDLER]: (state, text) => state.activeItem!.url = text,

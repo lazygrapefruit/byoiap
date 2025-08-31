@@ -6,6 +6,8 @@ import { languageNameToCode } from "./language-name-to-code";
 import { MovieId, ShowId, type MediaId } from "./media-id";
 import { ALL_PROVIDERS } from "./provider";
 import { displayCompare, getExpectedQuality } from "./title-utils";
+import { DownloadSource } from "./provider/types";
+import prettyBytes from "pretty-bytes";
 
 export const INJECTED_CONFIG_KEY = Symbol("InjectedConfig");
 
@@ -51,26 +53,26 @@ function languageNameToFlag(name: string) {
 function itemToStream(config: AddonConfig, item: IndexedItem, baseCacheNextUrl: URL | undefined) {
     const { configStr, origin } = config[INJECTED_CONFIG_KEY];
     const url = new URL(`${configStr}/resolve`, origin);
-    url.searchParams.set("url", item.url);
     url.searchParams.set("kind", "usenet");
 
-    if (item.fileName)
-        url.searchParams.set("fileName", item.fileName);
-
-    if (item.password)
-        url.searchParams.set("password", item.password);
+    for (const key in DownloadSource.properties) {
+        const value = item[key as keyof IndexedItem];
+        if (value) url.searchParams.set(key, `${value}`);
+    }
 
     // The next cache URL is the same for every entry except for the title to match. So, if present,
     // just overwrite the title and use that.
     if (baseCacheNextUrl) {
         baseCacheNextUrl.searchParams.set("title", item.title);
-        url.searchParams.set("asyncChain", baseCacheNextUrl.toString());
+        url.searchParams.set("asyncChain", `${baseCacheNextUrl}`);
     }
 
     let title = `${item.title}`;
     title += `\nAudio: ${(item.languagesAudio).map(languageNameToFlag)}`;
     title += `\nSubtitles: ${(item.languagesSubtitles).map(languageNameToFlag)}`;
-    title += `\nAge: ${daysSince(item.publishDate)} | Grabs: ${item.grabs} | Votes: ${item.votesUp}-${item.votesDown}`;
+    title += `\nAge: ${daysSince(item.publishDate)} | Grabs: ${item.grabs}`;
+    if (typeof item.size === "number") title += ` | Size ${prettyBytes(item.size)}`;
+    title += ` | Votes: ${item.votesUp}-${item.votesDown}`;
 
     const quality = item.expectedQuality ?? "Unknown";
 
@@ -93,6 +95,7 @@ function itemToStream(config: AddonConfig, item: IndexedItem, baseCacheNextUrl: 
 
 export async function streamHandler(args: StreamHandlerArgs) {
     // console.log(`request for streams: `, args);
+    const startTime = performance.now();
     const { config, id, type } = args;
     const streams: (ReturnType<typeof itemToStream>)[] = [];
 
@@ -109,11 +112,14 @@ export async function streamHandler(args: StreamHandlerArgs) {
     if (!indexer || !provider || !mediaId)
         return { streams };
 
+    // The cache checker is built prior to starting the query because it may start promises
+    // that get used later. This allows them to resolve while the query is in flight.
+    const cacheChecker = provider.buildCacheChecker(config.provider);
     const indexedItems = await indexer.query(config.indexer, mediaId);
 
     // Send out provider cache check as soon as possible. Ideally there is other work we can do while
     // waiting on it.
-    const cached = provider.cached(config.provider, indexedItems);
+    const cached = cacheChecker(indexedItems);
 
     let baseCacheNextUrl: URL | undefined;
     if (type === "series" && config.shared.nextEpisodeCacheCount > 0) {
@@ -166,10 +172,12 @@ export async function streamHandler(args: StreamHandlerArgs) {
             if (foundInQuality > MINIMUM_PER_QUALITY && isBad(item))
                 continue;
 
-            streams.push(itemToStream(config, item, baseCacheNextUrl));
+            const stream = itemToStream(config, item, baseCacheNextUrl);
+            if (item.previouslyFailed) stream.name += `\n[Failed]`;
+            streams.push(stream);
         }
     }
 
-    console.log(`[streams] Got ${streams.length} streams`);
+    console.log(`[streams] Got ${streams.length} streams in ${(performance.now() - startTime).toFixed(0)}ms`);
     return { streams };
 }

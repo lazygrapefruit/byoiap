@@ -46,14 +46,24 @@
                     {:else}
                         <div class="form-group">
                             <label for={`/${section}/${key}`}>{value.title}</label>
-                            <input
-                                id={`/${section}/${key}`}
-                                type={value.type === 'number' ? 'number' : 'text'}
-                                name={`/${section}/${key}`}
-                                bind:value={(fv as any)[section][key]}
-                                class="input"
-                                {...numberAttrs(value)}
-                            />
+                            {#if value.type === 'boolean'}
+                                <input
+                                    id={`/${section}/${key}`}
+                                    type="checkbox"
+                                    name={`/${section}/${key}`}
+                                    bind:checked={(fv as any)[section][key]}
+                                    class="input"
+                                />
+                            {:else}
+                                <input
+                                    id={`/${section}/${key}`}
+                                    type={value.type === 'number' ? 'number' : 'text'}
+                                    name={`/${section}/${key}`}
+                                    bind:value={(fv as any)[section][key]}
+                                    class="input"
+                                    {...numberAttrs(value)}
+                                />
+                            {/if}
                             {#if value.description}
                                 <div class="input-desc">{value.description}</div>
                             {/if}

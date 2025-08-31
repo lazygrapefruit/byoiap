@@ -76,8 +76,8 @@ export const GET: RequestHandler = async (event) => {
                 const retryUrl = new URL(url);
                 if (typeof result.payload === "string")
                     retryUrl.searchParams.set("pendingPayload", result.payload);
-                retryUrl.searchParams.set("retryEnd", String(retryEnd));
-                retryUrl.searchParams.set("_bust", String(now));
+                retryUrl.searchParams.set("retryEnd", `${retryEnd}`);
+                retryUrl.searchParams.set("_bust", `${now}`);
                 return {
                     url: `${retryUrl}`,
                     maxAge: MaxAge.PendingBase + retrySeconds,
@@ -88,7 +88,7 @@ export const GET: RequestHandler = async (event) => {
             // freeing up slots with the debrid provider, don't cause the same failure to keep being emitted.
             _resolveCache.delete(cacheKey);
             return {
-                url: "", // TODO: Get appropriate failure video
+                url: "https://torrentio.strem.fun/videos/failed_unexpected_v2.mp4", // TODO: Use actually appropriate failure video
                 maxAge: MaxAge.Failure,
             };
         })();

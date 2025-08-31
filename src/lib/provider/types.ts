@@ -6,11 +6,13 @@ export interface BaseProviderConfig {
 }
 
 const DownloadSourceUsenet = Type.Object({
-    kind: Type.Readonly(Type.Literal("usenet")),
+    kind: Type.Literal("usenet"),
     url: Type.Readonly(Type.String()),
     password: Type.ReadonlyOptional(Type.String()),
-    fileName: Type.ReadonlyOptional(Type.String()),
+    fileName: Type.Optional(Type.String()),
     pendingPayload: Type.Optional(Type.String()),
+    title: Type.Readonly(Type.String()),
+    guid: Type.Readonly(Type.String()),
 });
 
 export const DownloadSource = Type.Union([DownloadSourceUsenet]);
@@ -34,7 +36,7 @@ export interface Provider<Config extends BaseProviderConfig = BaseProviderConfig
     readonly id: string;
     readonly configSchema: TObject;
 
-    cached(config: Config, items: IndexedItem[]): Promise<IndexedItem[]>;
+    buildCacheChecker(config: Config): (items: IndexedItem[]) => Promise<IndexedItem[]>;
     precache(config: Config, source: DownloadSource): Promise<void>;
     resolve(config: Config, source: DownloadSource): Promise<ResolveResult>;
 }
