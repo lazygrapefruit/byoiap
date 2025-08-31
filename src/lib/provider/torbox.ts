@@ -94,8 +94,13 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
         // grabs that include comments that include information about the grab request,
         // which fights against the cache.
         const nzbResponse = await fetch(source.url);
-        const nzb = await nzbResponse.blob();
-        console.log({ size: nzb.size, type: nzb.type });
+        const nzbRaw = await nzbResponse.blob();
+
+        // It seems that TorBox handles mimetypes incorrectly. It does not account for
+        // mimetypes with multiple parts, such as charset.
+        const nzb = new Blob([nzbRaw], {
+            type: nzbRaw.type.split(";")[0],
+        });
         formData.set("file", nzb);
     }
     else {
