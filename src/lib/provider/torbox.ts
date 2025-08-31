@@ -70,23 +70,13 @@ const ListResult = Type.Object({
 });
 type ListResult = Static<typeof ListResult>;
 
-type PreQueryPayload = {
-    readonly id: number;
-    readonly name: string;
-    readonly size: number;
-    readonly openSubtitlesHash: string | undefined;
-    readonly fileId: number;
-    readonly fileName: string;
-    readonly mimetype: string | undefined;
-}[];
-
 interface PendingPayload {
     downloadId: number | undefined;
     fileId: number | undefined;
 }
 
 function serializePendingPayload(data: PendingPayload) {
-    return `${data.downloadId ?? ""};${data.fileId ?? ""}`;
+    return `${data.downloadId ?? ""}_${data.fileId ?? ""}`;
 }
 
 function parseOptionalNumber(num: string) {
@@ -96,7 +86,7 @@ function parseOptionalNumber(num: string) {
 
 function deserializePendingPayload(data: string | undefined): PendingPayload | undefined {
     if (!data) return undefined;
-    const [downloadId, fileId] = data.split(";").map(parseOptionalNumber);
+    const [downloadId, fileId] = data.split("_").map(parseOptionalNumber);
     return {
         downloadId,
         fileId,
@@ -159,14 +149,61 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
     return json;
 }
 
+interface LibraryItemBase {
+    readonly id: number;
+    readonly name: string;
+}
+
+interface LibraryItemDownloading extends LibraryItemBase {
+    readonly status: "downloading";
+}
+
+interface LibraryItemFailed extends LibraryItemBase {
+    readonly status: "failed";
+}
+
+interface LibraryItemReady extends LibraryItemBase {
+    readonly status: "ready";
+    readonly size: number;
+    readonly openSubtitlesHash: string | undefined;
+    readonly fileId: number;
+    readonly fileName: string;
+    readonly mimetype: string | undefined;
+}
+
+type LibraryItem = LibraryItemDownloading | LibraryItemFailed | LibraryItemReady;
+
+function handleMyLibraryItem(item: ListResult["data"][number]): LibraryItem | undefined {
+    if (!item.name) return undefined;
+
+    const base: LibraryItemBase = {
+        id: item.id,
+        name: item.name,
+    };
+    if (!item.download_present || !item.download_finished) {
+        return { ...base, status: item.active ? "downloading" : "failed" };
+    }
+
+    const file = getPreferredFile(item.files);
+    if (!file) return { ...base, status: "failed" };
+
+    return {
+        ...base,
+        status: "ready",
+        openSubtitlesHash: file.opensubtitles_hash,
+        fileId: file.id,
+        fileName: file.short_name,
+        mimetype: file.mimetype,
+        size: file.size,
+    };
+}
+
 async function getMyLibrary(config: TorboxConfig) {
     const LIMIT = 1000;
     const listUrl = new URL("/v1/api/usenet/mylist", API_ROOT);
     listUrl.searchParams.set("limit", `${LIMIT}`);
 
-    const downloaded: PreQueryPayload = [];
-    const statuses = new Map<string, Required<IndexedItem>["status"]>();
-
+    const libraryItems: LibraryItem[] = [];
     for (let i = 0;; ++i) {
         listUrl.searchParams.set("offset", `${i * LIMIT}`);
         const response = await fetch(listUrl, {
@@ -179,32 +216,14 @@ async function getMyLibrary(config: TorboxConfig) {
         if (!json.success) break;
 
         for (const item of json.data ?? []) {
-            if (!item.name) continue;
-            statuses.set(item.name, "failed");
-
-            if (!item.download_present || !item.download_finished) {
-                if (item.active) statuses.set(item.name, "downloading");
-                continue;
-            }
-            const file = getPreferredFile(item.files);
-            if (!file) continue;
-
-            statuses.set(item.name, "ready");
-            downloaded.push({
-                id: item.id,
-                name: item.name,
-                openSubtitlesHash: file.opensubtitles_hash,
-                fileId: file.id,
-                fileName: file.short_name,
-                mimetype: file.mimetype,
-                size: file.size,
-            });
+            const libraryItem = handleMyLibraryItem(item);
+            if (libraryItem) libraryItems.push(libraryItem);
         }
 
         if (json.data.length < LIMIT) break;
     }
 
-    return { downloaded, statuses };
+    return libraryItems;
 }
 
 interface UsenetFile {
@@ -291,24 +310,27 @@ export const torboxProvider = {
 
             const result = new Set<typeof items[number]>();
             await Promise.all([
-                myLibraryPromise.then(({ downloaded, statuses }) => {
-                    for (const libraryItem of downloaded) {
+                myLibraryPromise.then((libraryItems) => {
+                    for (const libraryItem of libraryItems) {
                         const item = nameToItem.get(libraryItem.name);
                         if (!item) continue;
-                        result.add(item);
-
-                        item.pendingPayload = serializePendingPayload({
+                        item.status = libraryItem.status;
+                        const pendingPayload: PendingPayload = {
                             downloadId: libraryItem.id,
-                            fileId: libraryItem.fileId,
-                        });
-                        item.fileName = libraryItem.fileName;
-                        item.mimetype = libraryItem.mimetype;
-                        item.openSubtitlesHash = libraryItem.openSubtitlesHash;
-                        item.size = libraryItem.size;
-                    }
-                    for (const [key, value] of statuses.entries()) {
-                        const item = nameToItem.get(key);
-                        if (item) item.status = value;
+                            fileId: undefined,
+                        };
+
+                        if (libraryItem.status === "ready") {
+                            result.add(item);
+
+                            pendingPayload.fileId = libraryItem.fileId;
+                            item.fileName = libraryItem.fileName;
+                            item.mimetype = libraryItem.mimetype;
+                            item.openSubtitlesHash = libraryItem.openSubtitlesHash;
+                            item.size = libraryItem.size;
+                        }
+
+                        item.pendingPayload = serializePendingPayload(pendingPayload);
                     }
                 }),
                 ...requests.map(async (response) => {
@@ -372,7 +394,7 @@ export const torboxProvider = {
 
             const json = await response.json();
             if (!json.download_finished)
-                return { status: ResolveStatus.Pending, pendingPayload: serializePendingPayload({ downloadId, fileId }) };
+                return { status: ResolveStatus.Pending, payload: serializePendingPayload({ downloadId, fileId }) };
 
             const file = getPreferredFile(json.data.files, source.fileName);
             if (file) fileId = file.id;
