@@ -1,3 +1,4 @@
+import type { IndexedItem } from "$lib/indexer/types";
 import { DownloadSource, ResolveStatus, type Provider } from "./types";
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -139,8 +140,9 @@ async function getMyLibrary(config: TorboxConfig) {
     const listUrl = new URL("/v1/api/usenet/mylist", API_ROOT);
     listUrl.searchParams.set("limit", `${LIMIT}`);
 
-    const available: PreQueryPayload = [];
-    const failed: string[] = [];
+    const downloaded: PreQueryPayload = [];
+    const statuses = new Map<string, Required<IndexedItem>["status"]>();
+
     for (let i = 0;; ++i) {
         listUrl.searchParams.set("offset", `${i * LIMIT}`);
         const response = await fetch(listUrl, {
@@ -154,13 +156,17 @@ async function getMyLibrary(config: TorboxConfig) {
 
         for (const item of json.data ?? []) {
             if (!item.name) continue;
+            statuses.set(item.name, "failed");
+
             if (!item.download_present || !item.download_finished) {
-                if (!item.active) failed.push(item.name);
+                if (item.active) statuses.set(item.name, "downloading");
                 continue;
             }
             const file = getPreferredFile(item.files);
             if (!file) continue;
-            available.push({
+
+            statuses.set(item.name, "ready");
+            downloaded.push({
                 id: item.id,
                 name: item.name,
                 openSubtitlesHash: file.opensubtitles_hash,
@@ -173,7 +179,7 @@ async function getMyLibrary(config: TorboxConfig) {
         if (json.data.length < LIMIT) break;
     }
 
-    return { available, failed };
+    return { downloaded, statuses };
 }
 
 interface UsenetFile {
@@ -255,8 +261,8 @@ export const torboxProvider = {
 
             const result = new Set<typeof items[number]>();
             await Promise.all([
-                myLibraryPromise.then(({ available, failed }) => {
-                    for (const libraryItem of available) {
+                myLibraryPromise.then(({ downloaded, statuses }) => {
+                    for (const libraryItem of downloaded) {
                         const item = nameToItem.get(libraryItem.name);
                         if (!item) continue;
                         result.add(item);
@@ -267,9 +273,9 @@ export const torboxProvider = {
                         item.openSubtitlesHash = libraryItem.openSubtitlesHash;
                         item.size = libraryItem.size;
                     }
-                    for (const libraryItem of failed) {
-                        const item = nameToItem.get(libraryItem);
-                        if (item) item.previouslyFailed = true;
+                    for (const [key, value] of statuses.entries()) {
+                        const item = nameToItem.get(key);
+                        if (item) item.status = value;
                     }
                 }),
                 ...requests.map(async (response) => {
@@ -282,6 +288,7 @@ export const torboxProvider = {
                         if (!file) continue;
 
                         result.add(item);
+                        item.status = "cached";
                         item.fileName = file.short_name;
                         item.mimetype = file.mimetype;
                         item.openSubtitlesHash = file.opensubtitles_hash;

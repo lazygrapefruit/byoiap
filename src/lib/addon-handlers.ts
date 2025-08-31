@@ -8,6 +8,7 @@ import { ALL_PROVIDERS } from "./provider";
 import { displayCompare, getExpectedQuality } from "./title-utils";
 import { DownloadSource } from "./provider/types";
 import prettyBytes from "pretty-bytes";
+import { capitalCase } from "change-case";
 
 export const INJECTED_CONFIG_KEY = Symbol("InjectedConfig");
 
@@ -75,11 +76,14 @@ function itemToStream(config: AddonConfig, item: IndexedItem, baseCacheNextUrl: 
     title += ` | Votes: ${item.votesUp}-${item.votesDown}`;
 
     const quality = item.expectedQuality ?? "Unknown";
+    let name = `byoiap\n${quality}`;
+    if (item.status)
+        name += `\n[${capitalCase(item.status)}]`;
 
     // https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/api/responses/stream.md
     const result = {
         url: url.toString(),
-        name: `byoiap\n${quality}`,
+        name,
         title,
         behaviorHints: {
             bingeGroup: `byoiap-${quality}`,
@@ -146,7 +150,6 @@ export async function streamHandler(args: StreamHandlerArgs) {
     const addedUrls = new Set<string>();
     for (const item of (await cached).sort((a, b) => urlToSortOrder[a.url] - urlToSortOrder[b.url])) {
         const stream = itemToStream(config, item, baseCacheNextUrl);
-        stream.name += `\n[Cached]`;
         streams.push(stream);
         addedUrls.add(item.url);
     }
@@ -173,7 +176,6 @@ export async function streamHandler(args: StreamHandlerArgs) {
                 continue;
 
             const stream = itemToStream(config, item, baseCacheNextUrl);
-            if (item.previouslyFailed) stream.name += `\n[Failed]`;
             streams.push(stream);
         }
     }

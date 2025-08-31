@@ -49,6 +49,7 @@
 		"@isaacs/ttlcache": "^1.4.1",
 		"@jsonjoy.com/json-pack": "^1.10.1",
 		"@sinclair/typebox": "^0.34.38",
+		"change-case": "^5.4.4",
 		"fastest-levenshtein": "^1.0.16",
 		"language-emoji": "^2.1.1",
 		"pretty-bytes": "^7.0.1",

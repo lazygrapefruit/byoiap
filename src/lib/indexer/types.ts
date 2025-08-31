@@ -22,8 +22,13 @@ export const IndexedItem = Type.Intersect([
         expectedQuality: Type.Optional(Type.Number()),
         mimetype: Type.Optional(Type.String()),
         openSubtitlesHash: Type.Optional(Type.String()),
-        previouslyFailed: Type.Optional(Type.Boolean()),
         size: Type.Optional(Type.Number()),
+        status: Type.Optional(Type.Union([
+            Type.Literal("cached"),
+            Type.Literal("ready"),
+            Type.Literal("downloading"),
+            Type.Literal("failed"),
+        ])),
     }),
 ]);
 
