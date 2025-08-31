@@ -219,39 +219,44 @@ export const torboxProvider = {
             if (items.length < 1) return [];
 
             const requests: Promise<Response>[] = [];
-
             const hashToItem = new Map<string, typeof items[0]>();
-            for (const item of items)
-                hashToItem.set(createHash("md5").update(item.url, "utf-8").digest("hex"), item);
 
-            const listUrl = new URL("/v1/api/usenet/checkcached", API_ROOT);
-            listUrl.searchParams.set("format", "list");
-            listUrl.searchParams.set("list_files", "true");
+            // Only bother checking the cache for links if not using the proxyFile setting because
+            // with proxyFile on things there won't be downloads by link anyway so all this cache
+            // checking would be wasted.
+            if (!config.proxyFile) {
+                for (const item of items)
+                    hashToItem.set(createHash("md5").update(item.url, "utf-8").digest("hex"), item);
 
-            let added = 0;
-            let building = "";
-            const finalizeRequest = () => {
-                listUrl.searchParams.set("hash", building);
-                requests.push(fetch(listUrl, {
-                    headers: {
-                        Authorization: `Bearer ${config.apiKey}`
-                    },
-                }));
-                building = "";
-                added = 0;
-            };
+                const listUrl = new URL("/v1/api/usenet/checkcached", API_ROOT);
+                listUrl.searchParams.set("format", "list");
+                listUrl.searchParams.set("list_files", "true");
 
-            const ALLOWED_PER_CHUNK = 50;
-            for (const hash of hashToItem.keys()) {
-                building += hash;
-                ++added;
-                if (added >= ALLOWED_PER_CHUNK)
+                let added = 0;
+                let building = "";
+                const finalizeRequest = () => {
+                    listUrl.searchParams.set("hash", building);
+                    requests.push(fetch(listUrl, {
+                        headers: {
+                            Authorization: `Bearer ${config.apiKey}`
+                        },
+                    }));
+                    building = "";
+                    added = 0;
+                };
+
+                const ALLOWED_PER_CHUNK = 50;
+                for (const hash of hashToItem.keys()) {
+                    building += hash;
+                    ++added;
+                    if (added >= ALLOWED_PER_CHUNK)
+                        finalizeRequest();
+                    else
+                        building += ",";
+                }
+                if (added)
                     finalizeRequest();
-                else
-                    building += ",";
             }
-            if (added)
-                finalizeRequest();
 
             // Build a lookup table of expected names to items so that the this can be used
             // to establish which items are already in the list of my cached items.
