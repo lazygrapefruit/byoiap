@@ -30,7 +30,7 @@ const DownloadResult = Type.Union([
         success: Type.Literal(true),
         error: Type.Null(),
         data: Type.Object({
-            usenetdownload_id: Type.Union([Type.Number(), Type.String()]),
+            usenetdownload_id: Type.Number(),
         }),
     }),
     Type.Object({
@@ -75,9 +75,33 @@ type PreQueryPayload = {
     readonly name: string;
     readonly size: number;
     readonly openSubtitlesHash: string | undefined;
+    readonly fileId: number;
     readonly fileName: string;
     readonly mimetype: string | undefined;
 }[];
+
+interface PendingPayload {
+    downloadId: number | undefined;
+    fileId: number | undefined;
+}
+
+function serializePendingPayload(data: PendingPayload) {
+    return `${data.downloadId ?? ""};${data.fileId ?? ""}`;
+}
+
+function parseOptionalNumber(num: string) {
+    const result = Number.parseInt(num);
+    if (Number.isInteger(result)) return result;
+}
+
+function deserializePendingPayload(data: string | undefined): PendingPayload | undefined {
+    if (!data) return undefined;
+    const [downloadId, fileId] = data.split(";").map(parseOptionalNumber);
+    return {
+        downloadId,
+        fileId,
+    };
+}
 
 function buildName(title: string, guid: string) {
     const guidHash = createHash("md5").update(guid).digest("base64url");
@@ -170,6 +194,7 @@ async function getMyLibrary(config: TorboxConfig) {
                 id: item.id,
                 name: item.name,
                 openSubtitlesHash: file.opensubtitles_hash,
+                fileId: file.id,
                 fileName: file.short_name,
                 mimetype: file.mimetype,
                 size: file.size,
@@ -272,7 +297,10 @@ export const torboxProvider = {
                         if (!item) continue;
                         result.add(item);
 
-                        item.pendingPayload = `${libraryItem.id}`;
+                        item.pendingPayload = serializePendingPayload({
+                            downloadId: libraryItem.id,
+                            fileId: libraryItem.fileId,
+                        });
                         item.fileName = libraryItem.fileName;
                         item.mimetype = libraryItem.mimetype;
                         item.openSubtitlesHash = libraryItem.openSubtitlesHash;
@@ -313,46 +341,53 @@ export const torboxProvider = {
     resolve: async function(config, source) {
         Value.Assert(TorboxConfig, config);
         Value.Assert(DownloadSource, source);
+        const pending = deserializePendingPayload(source.pendingPayload);
+        let downloadId = pending?.downloadId;
+        let fileId = pending?.fileId;
 
-        let downloadId = source.pendingPayload;
-        if (downloadId == null) {
+        // Get the download id
+        if (typeof downloadId !== "number") {
             const createJson = await createDownload(config, source);
             Value.Assert(DownloadResult, createJson);
             switch (createJson.error) {
                 case null:
-                    downloadId = String(createJson.data.usenetdownload_id);
+                    downloadId = createJson.data.usenetdownload_id;
                     break;
                 case "ACTIVE_LIMIT":
                     return { status: ResolveStatus.LimitReached };
-                default:
-                    return { status: ResolveStatus.UnknownFailure };
             }
         }
+        if (typeof downloadId !== "number")
+            return { status: ResolveStatus.UnknownFailure };
 
-        const listUrl = new URL("/v1/api/usenet/mylist", API_ROOT);
-        listUrl.searchParams.set("id", downloadId);
-        const response = await fetch(listUrl, {
-            headers: {
-                Authorization: `Bearer ${config.apiKey}`
-            },
-        });
+        // Get the file id
+        if (typeof fileId !== "number") {
+            const listUrl = new URL("/v1/api/usenet/mylist", API_ROOT);
+            listUrl.searchParams.set("id", `${downloadId}`);
+            const response = await fetch(listUrl, {
+                headers: {
+                    Authorization: `Bearer ${config.apiKey}`
+                },
+            });
 
-        const json = await response.json();
-        const file = getPreferredFile(json.data.files, source.fileName);
-        if (file) {
-            const dlUrl = new URL("/v1/api/usenet/requestdl", API_ROOT);
-            dlUrl.searchParams.set("token", config.apiKey);
-            dlUrl.searchParams.set("usenet_id", json.data.id);
-            dlUrl.searchParams.set("file_id", `${file.id}`);
-            return {
-                status: ResolveStatus.Succeeded,
-                url: await fetch(dlUrl).then(r => r.json()).then(j => j.data),
-            };
+            const json = await response.json();
+            if (!json.download_finished)
+                return { status: ResolveStatus.Pending, pendingPayload: serializePendingPayload({ downloadId, fileId }) };
+
+            const file = getPreferredFile(json.data.files, source.fileName);
+            if (file) fileId = file.id;
         }
+        if (typeof fileId !== "number")
+            return { status: ResolveStatus.UnknownFailure };
 
-        if (!json.download_finished)
-            return { status: ResolveStatus.Pending, payload: downloadId };
-
-        return { status: ResolveStatus.UnknownFailure };
+        // Get the final download URL
+        const dlUrl = new URL("/v1/api/usenet/requestdl", API_ROOT);
+        dlUrl.searchParams.set("token", config.apiKey);
+        dlUrl.searchParams.set("usenet_id", `${downloadId}`);
+        dlUrl.searchParams.set("file_id", `${fileId}`);
+        return {
+            status: ResolveStatus.Succeeded,
+            url: await fetch(dlUrl).then(r => r.json()).then(j => j.data),
+        };
     },
 } as const satisfies Provider<TorboxConfig>;
