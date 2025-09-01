@@ -105,9 +105,6 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
     formData.set("name", buildName(source.title, source.guid));
 
     if (config.proxyFile) {
-        // TODO: Strip comments from the file. This is because some indexers provide
-        // grabs that include comments that include information about the grab request,
-        // which fights against the cache.
         const nzbResponse = await fetch(source.url);
         const nzbRaw = await nzbResponse.blob();
 
