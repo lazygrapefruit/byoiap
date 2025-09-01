@@ -158,10 +158,19 @@ export async function streamHandler(args: StreamHandlerArgs) {
     {
         let currentQuality: number | undefined;
         let foundInQuality = 0;
+        const failedStreams: typeof streams = [];
 
         for (const item of indexedItems) {
             if (addedUrls.has(item.url))
                 continue;
+
+            // All failed streams get added at the end and don't
+            // count toward the quality group so that additional
+            // options may rise up the ranks.
+            if (item.status === "failed") {
+                failedStreams.push(itemToStream(config, item, baseCacheNextUrl));
+                continue;
+            }
 
             if (currentQuality !== item.expectedQuality) {
                 currentQuality = item.expectedQuality;
@@ -175,9 +184,11 @@ export async function streamHandler(args: StreamHandlerArgs) {
             if (foundInQuality > MINIMUM_PER_QUALITY && isBad(item))
                 continue;
 
-            const stream = itemToStream(config, item, baseCacheNextUrl);
-            streams.push(stream);
+            streams.push(itemToStream(config, item, baseCacheNextUrl));
         }
+
+        // Insert the failed streams at the end
+        streams.push(...failedStreams);
     }
 
     console.log(`[streams] Got ${streams.length} streams in ${(performance.now() - startTime).toFixed(0)}ms`);
