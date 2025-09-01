@@ -198,24 +198,20 @@ interface LibraryItemBase {
     readonly name: string;
 }
 
-interface LibraryItemDownloading extends LibraryItemBase {
-    readonly status: "downloading";
+interface LibraryItemDone extends LibraryItemBase {
+    readonly status: "done";
+    readonly files: ListResult["data"][number]["files"];
 }
 
 interface LibraryItemFailed extends LibraryItemBase {
     readonly status: "failed";
 }
 
-interface LibraryItemReady extends LibraryItemBase {
-    readonly status: "ready";
-    readonly size: number;
-    readonly openSubtitlesHash: string | undefined;
-    readonly fileId: number;
-    readonly fileName: string;
-    readonly mimetype: string | undefined;
+interface LibraryItemDownloading extends LibraryItemBase {
+    readonly status: "downloading";
 }
 
-type LibraryItem = LibraryItemDownloading | LibraryItemFailed | LibraryItemReady;
+type LibraryItem = LibraryItemDone | LibraryItemFailed | LibraryItemDownloading;
 
 async function getMyLibrary(config: TorboxConfig) {
     const libraryItems: LibraryItem[] = [];
@@ -231,20 +227,10 @@ async function getMyLibrary(config: TorboxConfig) {
             continue;
         }
 
-        const file = getPreferredFile(item.files);
-        if (!file) {
-            libraryItems.push({ ...base, status: "failed" });
-            continue;
-        }
-
         libraryItems.push({
             ...base,
-            status: "ready",
-            openSubtitlesHash: file.opensubtitles_hash,
-            fileId: file.id,
-            fileName: file.short_name,
-            mimetype: file.mimetype,
-            size: file.size,
+            status: "done",
+            files: item.files,
         });
     }
     return libraryItems;
@@ -338,20 +324,27 @@ export const torboxProvider = {
                     for (const libraryItem of libraryItems) {
                         const item = nameToItem.get(libraryItem.name);
                         if (!item) continue;
-                        item.status = libraryItem.status;
+                        item.status = "failed"; // This is expected to be overwritten if valid
                         const pendingPayload: PendingPayload = {
                             downloadId: libraryItem.id,
                             fileId: undefined,
                         };
 
-                        if (libraryItem.status === "ready") {
-                            result.add(item);
+                        if (libraryItem.status === "done") {
+                            const preferredFile = getPreferredFile(libraryItem.files);
+                            if (preferredFile) {
+                                result.add(item);
 
-                            pendingPayload.fileId = libraryItem.fileId;
-                            item.fileName = libraryItem.fileName;
-                            item.mimetype = libraryItem.mimetype;
-                            item.openSubtitlesHash = libraryItem.openSubtitlesHash;
-                            item.size = libraryItem.size;
+                                item.status = "ready";
+                                pendingPayload.fileId = preferredFile.id;
+                                item.fileName = preferredFile.short_name;
+                                item.mimetype = preferredFile.mimetype;
+                                item.openSubtitlesHash = preferredFile.opensubtitles_hash;
+                                item.size = preferredFile.size;
+                            }
+                        }
+                        else {
+                            item.status = libraryItem.status;
                         }
 
                         item.pendingPayload = serializePendingPayload(pendingPayload);
