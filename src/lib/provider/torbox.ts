@@ -1,4 +1,3 @@
-import type { IndexedItem } from "$lib/indexer/types";
 import { DownloadSource, ResolveStatus, type Provider } from "./types";
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
