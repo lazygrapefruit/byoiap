@@ -50,6 +50,7 @@ const DownloadResult = Type.Union([
         ]),
     }),
 ]);
+type DownloadResult = Static<typeof DownloadResult>;
 
 const ListResult = Type.Object({
     success: Type.Boolean(),
@@ -98,12 +99,59 @@ function buildName(title: string, guid: string) {
     return `${title} [${guidHash}]`;
 }
 
+async function* myLibraryItems(config: TorboxConfig) {
+    const LIMIT = 1000;
+    const listUrl = new URL("/v1/api/usenet/mylist", API_ROOT);
+    listUrl.searchParams.set("limit", `${LIMIT}`);
+
+    for (let i = 0;; ++i) {
+        listUrl.searchParams.set("offset", `${i * LIMIT}`);
+        const response = await fetch(listUrl, {
+            headers: {
+                Authorization: `Bearer ${config.apiKey}`
+            },
+        });
+
+        const json: ListResult = await response.json();
+        Value.Assert(ListResult, json);
+        if (!json.success) break;
+
+        // Here we try to find a name match. If we get one, create a response
+        // compatible with a sync request.
+        for (const item of json.data ?? [])
+            yield item;
+
+        if (json.data.length < LIMIT) break;
+    }
+}
+
 async function createDownload(config: TorboxConfig, source: DownloadSource, sync = true) {
+    const name = buildName(source.title, source.guid);
+
+    // Check if this has already been submitted. This is to help prevent duplicate downloads.
+    // The reason it works is that the name is based on the guid, so if the name already exists
+    // then the item already exists.
+    for await (const item of myLibraryItems(config)) {
+        if (item.name !== name) continue;
+        return {
+            success: true,
+            error: null,
+            data: {
+                usenetdownload_id: item.id,
+            },
+        } satisfies DownloadResult;
+    }
+
+    // Build the form request
     const formData = new FormData();
     if (source.password)
         formData.set("password", source.password);
-    formData.set("name", buildName(source.title, source.guid));
+    formData.set("name", name);
 
+    // Insert either the file or link. In the future this will probably have all of the following options:
+    //  1. Directly send the link the indexer provided.
+    //  2. Send a proxy link where BYOIAP performs the download.
+    //  3. Send the file directly
     if (config.proxyFile) {
         const nzbResponse = await fetch(source.url);
         const nzbRaw = await nzbResponse.blob();
@@ -170,56 +218,36 @@ interface LibraryItemReady extends LibraryItemBase {
 
 type LibraryItem = LibraryItemDownloading | LibraryItemFailed | LibraryItemReady;
 
-function handleMyLibraryItem(item: ListResult["data"][number]): LibraryItem | undefined {
-    if (!item.name) return undefined;
-
-    const base: LibraryItemBase = {
-        id: item.id,
-        name: item.name,
-    };
-    if (!item.download_present || !item.download_finished) {
-        return { ...base, status: item.active ? "downloading" : "failed" };
-    }
-
-    const file = getPreferredFile(item.files);
-    if (!file) return { ...base, status: "failed" };
-
-    return {
-        ...base,
-        status: "ready",
-        openSubtitlesHash: file.opensubtitles_hash,
-        fileId: file.id,
-        fileName: file.short_name,
-        mimetype: file.mimetype,
-        size: file.size,
-    };
-}
-
 async function getMyLibrary(config: TorboxConfig) {
-    const LIMIT = 1000;
-    const listUrl = new URL("/v1/api/usenet/mylist", API_ROOT);
-    listUrl.searchParams.set("limit", `${LIMIT}`);
-
     const libraryItems: LibraryItem[] = [];
-    for (let i = 0;; ++i) {
-        listUrl.searchParams.set("offset", `${i * LIMIT}`);
-        const response = await fetch(listUrl, {
-            headers: {
-                Authorization: `Bearer ${config.apiKey}`
-            },
-        });
-        const json: ListResult = await response.json();
-        Value.Assert(ListResult, json);
-        if (!json.success) break;
+    for await (const item of myLibraryItems(config)) {
+        if (!item.name) continue;
 
-        for (const item of json.data ?? []) {
-            const libraryItem = handleMyLibraryItem(item);
-            if (libraryItem) libraryItems.push(libraryItem);
+        const base: LibraryItemBase = {
+            id: item.id,
+            name: item.name,
+        };
+        if (!item.download_present || !item.download_finished) {
+            libraryItems.push({ ...base, status: item.active ? "downloading" : "failed" });
+            continue;
         }
 
-        if (json.data.length < LIMIT) break;
-    }
+        const file = getPreferredFile(item.files);
+        if (!file) {
+            libraryItems.push({ ...base, status: "failed" });
+            continue;
+        }
 
+        libraryItems.push({
+            ...base,
+            status: "ready",
+            openSubtitlesHash: file.opensubtitles_hash,
+            fileId: file.id,
+            fileName: file.short_name,
+            mimetype: file.mimetype,
+            size: file.size,
+        });
+    }
     return libraryItems;
 }
 
