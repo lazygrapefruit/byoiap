@@ -250,15 +250,18 @@ function getPreferredFile(files: UsenetFile[], fileName?: string | undefined): U
             if (file.short_name === fileName)
                 return file;
         }
+        return undefined;
     }
-    else {
-        for (const file of files) {
-            // For now, just assuming that the opensubtitles_hash indicates
-            // the media being looked for.
-            if (typeof file.opensubtitles_hash === "string")
-                return file;
-        }
+
+    // Assuming that the largest file is probably the desired file
+    let bestFile: UsenetFile | undefined;
+    let largestSize = 0;
+    for (const file of files) {
+        if (file.size <= largestSize) continue;
+        largestSize = file.size;
+        bestFile = file;
     }
+    return bestFile;
 }
 
 export const torboxProvider = {
