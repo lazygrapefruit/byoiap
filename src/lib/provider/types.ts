@@ -20,6 +20,7 @@ export type DownloadSource = Static<typeof DownloadSource>;
 
 export enum ResolveStatus {
     Succeeded,
+    Failed,
     Pending,
     LimitReached,
     UnknownFailure,
@@ -28,6 +29,7 @@ export enum ResolveStatus {
 export type ResolveResult = 
     | { status: ResolveStatus.Succeeded, url: string }
     | { status: ResolveStatus.Pending, payload?: string }
+    | { status: ResolveStatus.Failed }
     | { status: ResolveStatus.LimitReached }
     | { status: ResolveStatus.UnknownFailure }
 ;

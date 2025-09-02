@@ -58,7 +58,6 @@ const ListResult = Type.Object({
         active: Type.ReadonlyOptional(Type.Boolean()),
         name: Type.ReadonlyOptional(Type.String()),
         download_present: Type.ReadonlyOptional(Type.Boolean()),
-        download_finished: Type.ReadonlyOptional(Type.Boolean()),
         files: Type.Array(Type.Object({
             id: Type.Integer(),
             size: Type.Integer(),
@@ -222,7 +221,7 @@ async function getMyLibrary(config: TorboxConfig) {
             id: item.id,
             name: item.name,
         };
-        if (!item.download_present || !item.download_finished) {
+        if (!item.download_present) {
             libraryItems.push({ ...base, status: item.active ? "downloading" : "failed" });
             continue;
         }
@@ -413,10 +412,10 @@ export const torboxProvider = {
             });
 
             const listItemData = (await response.json()).data;
-            if (!listItemData.download_finished) {
+            if (!listItemData.download_present) {
                 if (listItemData.active)
                     return { status: ResolveStatus.Pending, payload: serializePendingPayload({ downloadId, fileId }) };
-                return { status: ResolveStatus.UnknownFailure };
+                return { status: ResolveStatus.Failed };
             }
 
             const file = getPreferredFile(listItemData.files, source.fileName);
