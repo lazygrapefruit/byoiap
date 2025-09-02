@@ -386,7 +386,6 @@ export const torboxProvider = {
         const pending = deserializePendingPayload(source.pendingPayload);
         let downloadId = pending?.downloadId;
         let fileId = pending?.fileId;
-        console.log("[tb-resolve]", { downloadId, fileId });
 
         // Get the download id
         if (typeof downloadId !== "number") {
@@ -413,11 +412,14 @@ export const torboxProvider = {
                 },
             });
 
-            const json = await response.json();
-            if (!json.download_finished)
-                return { status: ResolveStatus.Pending, payload: serializePendingPayload({ downloadId, fileId }) };
+            const listItemData = (await response.json()).data;
+            if (!listItemData.download_finished) {
+                if (listItemData.active)
+                    return { status: ResolveStatus.Pending, payload: serializePendingPayload({ downloadId, fileId }) };
+                return { status: ResolveStatus.UnknownFailure };
+            }
 
-            const file = getPreferredFile(json.data.files, source.fileName);
+            const file = getPreferredFile(listItemData.files, source.fileName);
             if (file) fileId = file.id;
         }
         if (typeof fileId !== "number")

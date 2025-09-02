@@ -29,7 +29,7 @@ export const Config = Type.Object({
             description: "How long to poll retry while download is pending. Prevents show failure videos.",
             minimum: 0,
             maximum: 600,
-            default: 90,
+            default: 180,
             multipleOf: 1,
         })),
     }),
