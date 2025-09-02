@@ -386,6 +386,7 @@ export const torboxProvider = {
         const pending = deserializePendingPayload(source.pendingPayload);
         let downloadId = pending?.downloadId;
         let fileId = pending?.fileId;
+        console.log("[tb-resolve]", { downloadId, fileId });
 
         // Get the download id
         if (typeof downloadId !== "number") {
