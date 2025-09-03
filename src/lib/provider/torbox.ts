@@ -63,7 +63,7 @@ const ListResult = Type.Object({
             size: Type.Integer(),
             mimetype: Type.ReadonlyOptional(Type.String()),
             short_name: Type.String(),
-            opensubtitles_hash: Type.ReadonlyOptional(Type.String()),
+            opensubtitles_hash: Type.ReadonlyOptional(Type.Union([Type.String(), Type.Null()])),
         })),
     })),
 });
@@ -238,7 +238,7 @@ async function getMyLibrary(config: TorboxConfig) {
 interface UsenetFile {
     readonly id: number;
     readonly mimetype?: string;
-    readonly opensubtitles_hash?: string;
+    readonly opensubtitles_hash?: string | null;
     readonly short_name: string;
     readonly size: number;
 }
@@ -341,7 +341,7 @@ export const torboxProvider = {
                                 pendingPayload.fileId = preferredFile.id;
                                 item.fileName = preferredFile.short_name;
                                 item.mimetype = preferredFile.mimetype;
-                                item.openSubtitlesHash = preferredFile.opensubtitles_hash;
+                                item.openSubtitlesHash = preferredFile.opensubtitles_hash ?? undefined;
                                 item.size = preferredFile.size;
                             }
                         }
@@ -365,7 +365,7 @@ export const torboxProvider = {
                         item.status = "cached";
                         item.fileName = file.short_name;
                         item.mimetype = file.mimetype;
-                        item.openSubtitlesHash = file.opensubtitles_hash;
+                        item.openSubtitlesHash = file.opensubtitles_hash ?? undefined;
                         item.size = file.size;
                     }
                 }),
