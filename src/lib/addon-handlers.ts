@@ -46,8 +46,7 @@ function daysSince(date: Date) {
     return daysElapsed;
 }
 
-function languageNameToFlag(name: string) {
-    const code = languageNameToCode(name);
+function languageCodeToFlag(code: string) {
     return (code && fallbackLangFlag(code)) || '�';
 }
 
@@ -69,8 +68,8 @@ function itemToStream(config: AddonConfig, item: IndexedItem, baseCacheNextUrl: 
     }
 
     let title = `${item.title}`;
-    title += `\nAudio: ${(item.languagesAudio).map(languageNameToFlag)}`;
-    title += `\nSubtitles: ${(item.languagesSubtitles).map(languageNameToFlag)}`;
+    title += `\nAudio: ${(item.languagesAudio).map(languageCodeToFlag)}`;
+    title += `\nSubtitles: ${(item.languagesSubtitles).map(languageCodeToFlag)}`;
     title += `\nAge: ${daysSince(item.publishDate)} | Grabs: ${item.grabs}`;
     if (typeof item.size === "number") title += ` | Size ${prettyBytes(item.size)}`;
     title += ` | Votes: ${item.votesUp}-${item.votesDown}`;

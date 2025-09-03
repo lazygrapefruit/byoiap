@@ -11,8 +11,8 @@ export const IndexedItem = Type.Intersect([
     Type.Object({
         // The indexer is expected to produce these properties
         grabs: Type.Readonly(Type.Integer()),
-        languagesAudio: Type.Readonly(Type.Array(Type.String())),
-        languagesSubtitles: Type.Readonly(Type.Array(Type.String())),
+        languagesAudio: Type.Readonly(Type.Array(Type.String())),       // Expected to be 2 letter codes
+        languagesSubtitles: Type.Readonly(Type.Array(Type.String())),   // Expected to be 2 letter codes
         publishDate: Type.Readonly(Type.Date()),
         votesUp: Type.Readonly(Type.Integer()),
         votesDown: Type.Readonly(Type.Integer()),

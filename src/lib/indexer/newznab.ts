@@ -6,6 +6,7 @@ import sax from "sax";
 import { Readable } from "node:stream";
 import assert from "node:assert";
 import type { SetOptional, Writable } from "type-fest";
+import { languageNameToCode } from "$lib/language-name-to-code";
 
 const ID = "newznab";
 
@@ -157,6 +158,12 @@ async function getCaps(config: NewznabConfig) {
     return parseState.data;
 }
 
+function mapLanguageToCode(input: string) {
+    const code = languageNameToCode(input);
+    if (code?.length === 2) return code;
+    return input;
+}
+
 interface QueryParseData {
     readonly items: IndexedItem[];
     activeItem?: SetOptional<Writable<IndexedItem>, "guid" | "url" | "publishDate" | "title">;
@@ -164,10 +171,10 @@ interface QueryParseData {
 
 const ATTRIBUTE_HANDLERS: Record<string, (target: Required<QueryParseData>["activeItem"], value: string) => void> = {
     grabs: (target, value) => target.grabs += Number.parseInt(value),
-    language: (target, value) => target.languagesAudio.push(...value.split(" - ")),
+    language: (target, value) => target.languagesAudio.push(...value.split(" - ").map(mapLanguageToCode)),
     password: (target, value) => target.password = value,
     size: (target, value) => target.size = Number.parseInt(value),
-    subs: (target, value) => target.languagesSubtitles.push(...value.split(" - ")),
+    subs: (target, value) => target.languagesSubtitles.push(...value.split(" - ").map(mapLanguageToCode)),
     thumbsup: (target, value) => target.votesUp += Number.parseInt(value),
     thumbsdown: (target, value) => target.votesDown += Number.parseInt(value),
 };

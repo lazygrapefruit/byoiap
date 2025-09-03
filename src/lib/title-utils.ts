@@ -1,7 +1,14 @@
 import type { IndexedItem } from "./indexer/types";
 
-// Higher index is higher preference. This is backward from how it would likely be represented (ex. 1080p,720p)
+/**
+ * Some stuff that should be made configurable, but for now is just being made to function at all.
+ * 
+ * Of note is that the arrays use the index for preference, meaning that higher index is higher preference.
+ * This behavior is likely backward from how it makes sense to display.
+ */
 const PREFERRED_QUALITIES: (number | undefined)[] = [];
+const PREFERRED_AUDIO_LANGUAGES = ["en"];
+const PREFERRED_SUBTITLE_LANGUAGES = ["en"];
 
 function voteScore(item: IndexedItem) {
     // down votes are weighted higher to make ties break nicer
@@ -12,9 +19,7 @@ export function isCompoundEpisode(title: string) {
     return /s\d{2}e\d{2}e\d{2}/i.test(title);
 }
 
-function titleScore(item: IndexedItem) {
-    const { title } = item;
-
+function titleScore({ title }: IndexedItem) {
     // Deprioritize compound episodes
     if (isCompoundEpisode(title))
         return -1;
@@ -30,6 +35,23 @@ function titleScore(item: IndexedItem) {
     return 0;
 }
 
+function languageScore(foundLanguages: string[], preferredLanguages: string[]) {
+    if (foundLanguages.length < 1) return 0;
+    for (let i = 0; i < preferredLanguages.length; ++i) {
+        if (foundLanguages.includes(preferredLanguages[i]))
+            return i + 1;
+    }
+    return -1;
+}
+
+function audioScore({ languagesAudio }: IndexedItem) {
+    return languageScore(languagesAudio, PREFERRED_AUDIO_LANGUAGES);
+}
+
+function subtitleScore({ languagesSubtitles }: IndexedItem) {
+    return languageScore(languagesSubtitles, PREFERRED_SUBTITLE_LANGUAGES);
+}
+
 export function displayCompare(a: IndexedItem, b: IndexedItem) {
     // Preferred qualities get a special higher preference.
     const preferredQualityScoreDelta = PREFERRED_QUALITIES.indexOf(a.expectedQuality) - PREFERRED_QUALITIES.indexOf(b.expectedQuality);
@@ -41,11 +63,20 @@ export function displayCompare(a: IndexedItem, b: IndexedItem) {
     if (qualityScoreDelta)
         return -qualityScoreDelta;
 
+    // Deal with quality issues, such as compound episodes
     const titleScoreDeleta = titleScore(a) - titleScore(b);
     if (titleScoreDeleta)
         return -titleScoreDeleta;
 
-    // Prefer subtitles being available
+    // Prefer subtitles being available and appropriately tagged
+    const subtitleScoreDelta = subtitleScore(a) - subtitleScore(b);
+    if (subtitleScoreDelta)
+        return -subtitleScoreDelta;
+
+    // Prefer audio being available and appropriately tagged
+    const audioScoreDelta = audioScore(a) - audioScore(b);
+    if (audioScoreDelta)
+        return -audioScoreDelta;
 
     // Then by votes (votes can approximate if it is likely to be up).
     const voteScoreDelta = voteScore(a) - voteScore(b);
