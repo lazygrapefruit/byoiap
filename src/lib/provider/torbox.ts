@@ -159,6 +159,7 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
         const nzb = new Blob([nzbRaw], {
             type: nzbRaw.type.split(";")[0],
         });
+        console.log("submitting nzb:", nzb);
         formData.set("file", nzb);
     }
     else {
