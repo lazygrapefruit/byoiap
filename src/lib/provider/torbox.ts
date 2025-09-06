@@ -156,7 +156,8 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
         const nzbRaw = await nzbResponse.blob();
 
         // It seems that TorBox handles mimetypes incorrectly. It does not account for
-        // mimetypes with multiple parts, such as charset.
+        // mimetypes with multiple parts, such as charset. There's also a bug in NZBHydra2
+        // that causes the mimetype to incorrectly be application/x-bittorrent.
         const nzb = new Blob([nzbRaw], {
             type: "application/x-nzb",
         });
