@@ -2,6 +2,7 @@ import { DownloadSource, ResolveStatus, type Provider } from "./types";
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from "crypto";
+import { inspect } from "util";
 
 const ID = "torbox";
 const API_ROOT = "https://api.torbox.app";
@@ -159,7 +160,7 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
         const nzb = new Blob([nzbRaw], {
             type: "application/x-nzb",
         });
-        console.log("submitting nzb:", nzb);
+        console.log(`Uploading NZB ${inspect(nzb)}. Converted from ${inspect(nzbRaw)}`);
         formData.set("file", nzb);
     }
     else {
