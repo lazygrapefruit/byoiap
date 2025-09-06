@@ -157,7 +157,7 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
         // It seems that TorBox handles mimetypes incorrectly. It does not account for
         // mimetypes with multiple parts, such as charset.
         const nzb = new Blob([nzbRaw], {
-            type: nzbRaw.type.split(";")[0],
+            type: "application/x-nzb",
         });
         console.log("submitting nzb:", nzb);
         formData.set("file", nzb);
