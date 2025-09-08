@@ -6,6 +6,7 @@ import { inspect } from "util";
 
 const ID = "torbox";
 const API_ROOT = "https://api.torbox.app";
+const NZB_MIMETYPE = "application/x-nzb";
 
 const TorboxConfig = Type.Object({
     id: Type.Readonly(Type.Literal(ID, {
@@ -153,15 +154,14 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
     //  3. Send the file directly
     if (config.proxyFile) {
         const nzbResponse = await fetch(source.url);
-        const nzbRaw = await nzbResponse.blob();
+        let nzb = await nzbResponse.blob();
 
-        // It seems that TorBox handles mimetypes incorrectly. It does not account for
-        // mimetypes with multiple parts, such as charset. There's also a bug in NZBHydra2
-        // that causes the mimetype to incorrectly be application/x-bittorrent.
-        const nzb = new Blob([nzbRaw], {
-            type: "application/x-nzb",
-        });
-        console.log(`Uploading NZB ${inspect(nzb)}. Converted from ${inspect(nzbRaw)}`);
+        // It seems that TorBox fails to account for some mimetypes, such as ones with
+        // multiple parts like ones that include charset. So if needed wrap it it with
+        // a type that will be accepted
+        if (nzb.type !== NZB_MIMETYPE)
+            nzb = new Blob([nzb], { type: NZB_MIMETYPE });
+
         formData.set("file", nzb);
     }
     else {
