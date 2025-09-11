@@ -10,12 +10,12 @@ export const IndexedItem = Type.Intersect([
     Type.Omit(DownloadSource, ["kind"]),
     Type.Object({
         // The indexer is expected to produce these properties
-        grabs: Type.Readonly(Type.Integer()),
+        grabs: Type.ReadonlyOptional(Type.Integer()),
         languagesAudio: Type.Readonly(Type.Array(Type.String())),       // Expected to be 2 letter codes
         languagesSubtitles: Type.Readonly(Type.Array(Type.String())),   // Expected to be 2 letter codes
         publishDate: Type.Readonly(Type.Date()),
-        votesUp: Type.Readonly(Type.Integer()),
-        votesDown: Type.Readonly(Type.Integer()),
+        votesUp: Type.ReadonlyOptional(Type.Integer()),
+        votesDown: Type.ReadonlyOptional(Type.Integer()),
 
         // These properties aren't expected to be produced by the
         // indexer, but may be optionally added by other systems.

@@ -63,6 +63,19 @@ interface CapsParseData {
     };
 };
 
+function makeSearchingCaps(key: "movie" | "tv") {
+    return {
+        [ATTRIBUTE_HANDLER]: (
+            state: CapsParseData,
+            { name, value }: Parameters<sax.SAXParser["onattribute"]>[0]
+        ) => {
+            if (name !== "supportedParams") return;
+            state.data[key] = value.split(",");
+            state.tryFinish?.();
+        }
+    }; 
+}
+
 const CAPS_PARSER: XmlParserNode<CapsParseData> = {
     caps: {
         limits: {
@@ -73,20 +86,12 @@ const CAPS_PARSER: XmlParserNode<CapsParseData> = {
             }
         },
         searching: {
-            'movie-search': {
-                [ATTRIBUTE_HANDLER]: (state, { name, value }) => {
-                    if (name !== "supportedParams") return;
-                    state.data.movie = value.split(",");
-                    state.tryFinish?.();
-                }
-            },
-            'tv-search': {
-                [ATTRIBUTE_HANDLER]: (state, { name, value }) => {
-                    if (name !== "supportedParams") return;
-                    state.data.tv = value.split(",");
-                    state.tryFinish?.();
-                }
-            },
+            'movie': makeSearchingCaps("movie"),
+            'movie-search': makeSearchingCaps("movie"),
+            'moviesearch': makeSearchingCaps("movie"),
+            'tv': makeSearchingCaps("tv"),
+            'tv-search': makeSearchingCaps("tv"),
+            'tvsearch': makeSearchingCaps("tv"),
         },
     },
 };
@@ -177,29 +182,30 @@ type BuildingIndexItem = SetOptional<Writable<IndexedItem>, "guid" | "url" | "pu
     episode?: number;
 };
 
-interface QueryParseData {
-    // Input
+interface QueryParseDataInput {
     readonly season?: number;
     readonly episode?: number;
     readonly onTotalItems?: (count: number) => void;
+}
 
-    // Output. All outputs must be reference types.
+interface QueryParseData extends QueryParseDataInput {
+    // Output.
     readonly items: IndexedItem[];
+    processedItemCount: number;
 
     // Internal state
     activeItem?: BuildingIndexItem;
 }
 
 const ATTRIBUTE_HANDLERS: Record<string, (target: Required<QueryParseData>["activeItem"], value: string) => void> = {
-    grabs: (target, value) => target.grabs += Number.parseInt(value),
+    grabs: (target, value) => target.grabs = Number.parseInt(value),
     episode: (target, value) => target.episode = Number.parseInt(value),
     language: (target, value) => target.languagesAudio.push(...value.split(" - ").map(mapLanguageToCode)),
     password: (target, value) => target.password = value,
     season: (target, value) => target.season = Number.parseInt(value),
-    size: (target, value) => target.size = Number.parseInt(value),
     subs: (target, value) => target.languagesSubtitles.push(...value.split(" - ").map(mapLanguageToCode)),
-    thumbsup: (target, value) => target.votesUp += Number.parseInt(value),
-    thumbsdown: (target, value) => target.votesDown += Number.parseInt(value),
+    thumbsup: (target, value) => target.votesUp = Number.parseInt(value),
+    thumbsdown: (target, value) => target.votesDown = Number.parseInt(value),
 };
 
 const DESIRED_ATTRIBUTES = Object.keys(ATTRIBUTE_HANDLERS).join(",");
@@ -218,6 +224,7 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                     const { activeItem } = state;
                     assert(activeItem);
                     state.activeItem = undefined;
+                    state.processedItemCount += 1;
 
                     // Filter out episodes that contain non-matching episode data
                     if (activeItem.season !== undefined && state.season !== activeItem.season)
@@ -240,11 +247,26 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                 guid: {
                     [TEXT_HANDLER]: (state, text) => state.activeItem!.guid = text,
                 },
-                link: {
-                    [TEXT_HANDLER]: (state, text) => state.activeItem!.url = text,
+                enclosure: {
+                    [ATTRIBUTE_HANDLER]: (state, { name, value }) => {
+                        switch (name) {
+                            case "url":
+                                state.activeItem!.url = value;
+                                break;
+                            case "length":
+                                state.activeItem!.size = Number.parseInt(value);
+                                break;
+                        }
+                    },
+                },
+                episode: {
+                    [TEXT_HANDLER]: (state, text) => state.activeItem!.episode = Number.parseInt(text),
                 },
                 pubDate: {
                     [TEXT_HANDLER]: (state, text) => state.activeItem!.publishDate = parseDate(text),
+                },
+                season: {
+                    [TEXT_HANDLER]: (state, text) => state.activeItem!.season = Number.parseInt(text),
                 },
                 title: {
                     [TEXT_HANDLER]: (state, text) => state.activeItem!.title = text,
@@ -265,6 +287,7 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
 const querySegment = async (url: URL, parseState: QueryParseData, offset: number) => {
     url.searchParams.set("offset", `${offset}`);
 
+    console.log(url);
     const response = await fetch(url);
     const saxStream = sax.createStream(true);
 
@@ -285,15 +308,13 @@ export const newznabIndexer = {
         Value.Assert(NewznabConfig, indexerOptions);
         const capsPromise = getCaps(indexerOptions);
 
-        const parseState: Writable<QueryParseData> = {
-            items: [],
-        };
+        let queryParseInput: Writable<QueryParseDataInput> = {};
 
         const url = new URL(indexerOptions.url);
         url.searchParams.set("apikey", indexerOptions.apiKey);
         url.searchParams.set("o", "xml");
         url.searchParams.set("attrs", DESIRED_ATTRIBUTES);
-        //url.searchParams.set("extended", "1");
+        url.searchParams.set("extended", "1");
 
         let capsKey: keyof Awaited<typeof capsPromise>;
         let searchIds: PotentialSearchIds = {
@@ -306,8 +327,8 @@ export const newznabIndexer = {
             url.searchParams.set("ep", String(mediaId.episode));
             const showData = await getShowData(mediaId.imdbId);
 
-            parseState.season = mediaId.season;
-            parseState.episode = mediaId.episode;
+            queryParseInput.season = mediaId.season;
+            queryParseInput.episode = mediaId.episode;
 
             searchIds.rid = showData.tvRageId;
             searchIds.tvdbid = showData.tvdbId;
@@ -321,27 +342,36 @@ export const newznabIndexer = {
             throw new Error("Invalid media id");
         }
 
-        const inserted = insertSearchIds(url.searchParams, (await capsPromise)[capsKey], searchIds);
+        const searchCaps = (await capsPromise)[capsKey];
+        const inserted = insertSearchIds(url.searchParams, searchCaps, searchIds);
+        console.log(await capsPromise);
         if (!inserted)
             return [];
 
         const limit = (await capsPromise).limit ?? 50;
         url.searchParams.set("limit", `${limit}`);
 
+        const result: IndexedItem[] = [];
+
         // This makes it so we can get all the segments.
-        const followupSegments: Promise<void>[] = [];
-        parseState.onTotalItems = (totalCount) => {
-            for (let offset = limit; offset < totalCount; offset += limit)
-                followupSegments.push(querySegment(url, { ...parseState }, offset));
-        };
+        let followupSegments: Promise<void>[] = [];
 
         // First just start querying with an offset of 0
-        await querySegment(url, { ...parseState }, 0);
+        const queryData: QueryParseData = {
+            ...queryParseInput,
+            onTotalItems: (totalCount) => {
+                for (let offset = limit; offset < totalCount; offset += limit)
+                    followupSegments.push(querySegment(url, { ...queryParseInput, items: result, processedItemCount: 0 }, offset));
+            },
+            items: result,
+            processedItemCount: 0,
+        };
+        await querySegment(url, queryData, 0);
 
         // The other queries should have been started by now, so they can now be awaited here.
         await Promise.all(followupSegments);
 
-        return parseState.items;
+        return result;
     },
 } as const satisfies Indexer<NewznabConfig>;
 

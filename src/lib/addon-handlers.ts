@@ -30,7 +30,7 @@ const MINIMUM_PER_QUALITY = 5;
 const MAXIMUM_PER_QUALITY = 20;
 
 function isBad(item: IndexedItem) {
-    return item.votesDown > item.votesUp;
+    return (item.votesDown ?? 0) > (item.votesUp ?? 0);
 }
 
 function daysSince(date: Date) {
@@ -70,9 +70,13 @@ function itemToStream(config: AddonConfig, item: IndexedItem, baseCacheNextUrl: 
     let title = `${item.title}`;
     title += `\nAudio: ${(item.languagesAudio).map(languageCodeToFlag)}`;
     title += `\nSubtitles: ${(item.languagesSubtitles).map(languageCodeToFlag)}`;
-    title += `\nAge: ${daysSince(item.publishDate)} | Grabs: ${item.grabs}`;
-    if (typeof item.size === "number") title += ` | Size ${prettyBytes(item.size)}`;
-    title += ` | Votes: ${item.votesUp}-${item.votesDown}`;
+    title += `\nAge: ${daysSince(item.publishDate)}`;
+    if (typeof item.grabs === "number")
+        title += ` | Grabs: ${item.grabs}`;
+    if (typeof item.size === "number")
+        title += ` | Size ${prettyBytes(item.size)}`;
+    if (typeof item.votesUp === "number" || typeof item.votesDown === "number")
+        title += ` | Votes: ${item.votesUp ?? 0}-${item.votesDown ?? 0}`;
 
     const quality = item.expectedQuality ?? "Unknown";
     let name = `byoiap\n${quality}`;
