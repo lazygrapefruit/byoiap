@@ -125,6 +125,35 @@ async function* myLibraryItems(config: TorboxConfig) {
     }
 }
 
+// Get either the file or link. In the future this will probably have all of the following options:
+//  1. Directly send the link the indexer provided.
+//  2. Send a proxy link where BYOIAP performs the download.
+//  3. Send the file directly
+async function getDownloadNzb(config: TorboxConfig, source: DownloadSource): Promise<["file", Blob] | ["link", string]> {
+    if (!config.proxyFile)
+        return ["link", source.url];
+
+    const nzbResponse = await fetch(source.url);
+    
+    // Special case for TorBox links. There should be a better way to do this, but this is fine enough for now.
+    // This version just currently has the unfortunate behavior that it requires Hydra to be set to redirect.
+    if (nzbResponse.status === 403) {
+        const responseUrl = new URL(nzbResponse.url);
+        if (responseUrl.hostname.endsWith(".torbox.app"))
+            return ["link", nzbResponse.url];
+    }
+
+    let nzb = await nzbResponse.blob();
+    
+    // It seems that TorBox fails to account for some mimetypes, such as ones with
+    // multiple parts like ones that include charset. So if needed wrap it it with
+    // a type that will be accepted
+    if (nzb.type !== NZB_MIMETYPE)
+        nzb = new Blob([nzb], { type: NZB_MIMETYPE });
+
+    return ["file", nzb];
+}
+
 async function createDownload(config: TorboxConfig, source: DownloadSource, sync = true) {
     const name = buildName(source.title, source.guid);
 
@@ -148,25 +177,8 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
         formData.set("password", source.password);
     formData.set("name", name);
 
-    // Insert either the file or link. In the future this will probably have all of the following options:
-    //  1. Directly send the link the indexer provided.
-    //  2. Send a proxy link where BYOIAP performs the download.
-    //  3. Send the file directly
-    if (config.proxyFile) {
-        const nzbResponse = await fetch(source.url);
-        let nzb = await nzbResponse.blob();
-
-        // It seems that TorBox fails to account for some mimetypes, such as ones with
-        // multiple parts like ones that include charset. So if needed wrap it it with
-        // a type that will be accepted
-        if (nzb.type !== NZB_MIMETYPE)
-            nzb = new Blob([nzb], { type: NZB_MIMETYPE });
-
-        formData.set("file", nzb);
-    }
-    else {
-        formData.set("link", source.url);
-    }
+    const [nzbKey, nzbValue] = await getDownloadNzb(config, source);
+    formData.set(nzbKey, nzbValue);
 
     const createResponse = await fetch(new URL(`/v1/api/usenet/${sync ? "" : "async"}createusenetdownload`, API_ROOT), {
         method: "POST",
