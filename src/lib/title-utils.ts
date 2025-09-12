@@ -12,7 +12,7 @@ const PREFERRED_SUBTITLE_LANGUAGES = ["en"];
 
 function voteScore(item: IndexedItem) {
     // down votes are weighted higher to make ties break nicer
-    return item.votesUp - 1.49 * item.votesDown;
+    return (item.votesUp ?? 0) - 1.49 * (item.votesDown ?? 0);
 }
 
 export function isCompoundEpisode(title: string) {
@@ -101,4 +101,19 @@ export function displayCompare(a: IndexedItem, b: IndexedItem) {
 export function getExpectedQuality(title: string) {
     const expectedQuality = /(?:[^a-zA-Z0-9]|^)(\d+)p(?:[^a-zA-Z0-9]|$)/.exec(title)?.[1];
     return expectedQuality ? Number.parseInt(expectedQuality) : undefined;
+}
+
+export function getExpectedEpisode(title: string) {
+    // Regular expression to match the pattern SxxExx or Sxxexx
+    const regex = /(s)(?<season>\d{2})(e)(?<episode>\d{2})/i;
+
+    const match = title.match(regex);
+    if (!match?.groups)
+        return undefined;
+
+    const { season, episode } = match.groups;
+    return {
+        season: Number.parseInt(season),
+        episode: Number.parseInt(episode),
+    };
 }

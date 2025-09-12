@@ -7,6 +7,7 @@ import { Readable } from "node:stream";
 import assert from "node:assert";
 import type { SetOptional, Writable } from "type-fest";
 import { languageNameToCode } from "$lib/language-name-to-code";
+import { getExpectedEpisode } from "$lib/title-utils";
 
 const ID = "newznab";
 
@@ -226,13 +227,24 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                     state.activeItem = undefined;
                     state.processedItemCount += 1;
 
+                    const toPush = Value.Parse(IndexedItem, activeItem);
+
+                    // Update season and episode from title, if useful.
+                    if (activeItem.season === undefined || activeItem.episode === undefined) {
+                        const expected = getExpectedEpisode(toPush.title);
+                        if (expected) {
+                            activeItem.season ??= expected.season;
+                            activeItem.episode ??= expected.episode;
+                        }
+                    }
+
                     // Filter out episodes that contain non-matching episode data
                     if (activeItem.season !== undefined && state.season !== activeItem.season)
                         return;
                     if (activeItem.episode !== undefined && state.episode !== activeItem.episode)
                         return;
 
-                    state.items.push(Value.Parse(IndexedItem, activeItem));
+                    state.items.push(toPush);
                 },
                 [OPEN_TAG_HANDLER]: (state) => {
                     assert(!state.activeItem);
