@@ -237,11 +237,8 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                 [OPEN_TAG_HANDLER]: (state) => {
                     assert(!state.activeItem);
                     state.activeItem = {
-                        grabs: 0,
                         languagesAudio: [],
                         languagesSubtitles: [],
-                        votesUp: 0,
-                        votesDown: 0,
                     };
                 },
                 guid: {
