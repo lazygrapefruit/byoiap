@@ -229,20 +229,22 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
 
                     const toPush = Value.Parse(IndexedItem, activeItem);
 
-                    // Update season and episode from title, if useful.
-                    if (activeItem.season === undefined || activeItem.episode === undefined) {
-                        const expected = getExpectedEpisode(toPush.title);
-                        if (expected) {
-                            activeItem.season ??= expected.season;
-                            activeItem.episode ??= expected.episode;
+                    if (state.season !== undefined || state.episode !== undefined) {
+                        // Update season and episode from title, if useful.
+                        if (activeItem.season === undefined || activeItem.episode === undefined) {
+                            const expected = getExpectedEpisode(toPush.title);
+                            if (expected) {
+                                activeItem.season ??= expected.season;
+                                activeItem.episode ??= expected.episode;
+                            }
                         }
-                    }
 
-                    // Filter out episodes that contain non-matching episode data
-                    if (activeItem.season !== undefined && state.season !== activeItem.season)
-                        return;
-                    if (activeItem.episode !== undefined && state.episode !== activeItem.episode)
-                        return;
+                        // Filter out episodes that contain non-matching episode data
+                        if (activeItem.season !== undefined && state.season !== activeItem.season)
+                            return;
+                        if (activeItem.episode !== undefined && state.episode !== activeItem.episode)
+                            return;
+                    }
 
                     state.items.push(toPush);
                 },

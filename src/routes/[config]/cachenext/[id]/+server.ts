@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { ALL_PROVIDERS } from '$lib/provider';
 import { ALL_INDEXERS } from '$lib/indexer';
 import { getShowData, ShowId } from '$lib/media-id';
-import { displayCompare, getExpectedQuality, isCompoundEpisode } from '$lib/title-utils';
+import { getExpectedQuality, isCompoundEpisode, makeDisplayCompare } from '$lib/title-utils';
 
 function replaceEpisodeNumber(input: string, targetSeason: number, targetEpisode: number) {
     // Regular expression to match the pattern SxxExx or Sxxexx
@@ -107,6 +107,7 @@ export const GET: RequestHandler = async ({ url, params }) => {
         // choose from. So now the best item is just whatever would've been at the
         // front of the display list when sorted.
         if (!bestItem && items.length) {
+            const displayCompare = makeDisplayCompare(config);
             bestItem = items[0];
             for (let i = 1; i < items.length; ++i) {
                 const currentItem = items[i];

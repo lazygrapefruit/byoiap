@@ -1,10 +1,10 @@
 <script lang="ts">
     import type { TNumber } from '@sinclair/typebox';
     import type { PageProps } from './$types';
-    import { decodeConfig, encodeConfig } from './data.remote';
+    import { encodeConfig } from './data.remote';
 
-    let { data, params }: PageProps = $props();
-    const formValue = decodeConfig(params.config);
+    let { data }: PageProps = $props();
+    const formValue = $state(data.config);
 
     // Helper to build input attributes for number fields
     function numberAttrs(value: TNumber) {
@@ -54,6 +54,23 @@
                                     bind:checked={(fv as any)[section][key]}
                                     class="input"
                                 />
+                            {:else if value.type === 'array'}
+                                <div class="array-container">
+                                    {#each (fv as any)[section][key] as item, index}
+                                        <div class="array-item">
+                                            <input
+                                                type={value.items.type === 'number' ? 'number' : 'text'}
+                                                bind:value={(fv as any)[section][key][index]}
+                                                class="input array-input"
+                                                {...(value.items.type === 'number' ? numberAttrs(value.items) : {})}
+                                            />
+                                            <button type="button" class="remove-btn" onclick={() => {(fv as any)[section][key].splice(index, 1)}}>Remove</button>
+                                        </div>
+                                    {/each}
+                                    {#if !value.maxItems || (fv as any)[section][key].length < value.maxItems}
+                                        <button type="button" class="add-btn" onclick={() => {(fv as any)[section][key].push(value.items.type === 'number' ? 0 : '')}}>Add Item</button>
+                                    {/if}
+                                </div>
                             {:else}
                                 <input
                                     id={`/${section}/${key}`}
@@ -163,5 +180,38 @@
         font-size: 0.92rem;
         margin-top: 0.05rem;
         margin-bottom: 0.1rem;
+    }
+    .array-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+    .array-item {
+        display: flex;
+        gap: 0.3rem;
+        align-items: center;
+    }
+    .array-input {
+        flex: 1;
+    }
+    .remove-btn, .add-btn {
+        padding: 0.35rem 0.7rem;
+        background: #dc3545;
+        color: #fff;
+        border: none;
+        border-radius: 0.3rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .remove-btn:hover {
+        background: #c82333;
+    }
+    .add-btn {
+        background: #28a745;
+        align-self: flex-start;
+    }
+    .add-btn:hover {
+        background: #218838;
     }
 </style>

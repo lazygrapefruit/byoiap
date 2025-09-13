@@ -32,6 +32,24 @@ export const Config = Type.Object({
             default: 180,
             multipleOf: 1,
         })),
+        preferredQualities: Type.Readonly(Type.Array(Type.Number(), {
+            title: "Preferred Quality",
+            description: 'Qualities ordered by preference. Use numbers such as 1080 to mean 1080p',
+            default: [],
+            maxItems: 10,
+        })),
+        preferredAudioLanguages: Type.Readonly(Type.Array(Type.String(), {
+            title: "Preferred Audio Languages",
+            description: 'Audio languages ordered by preference. Use short codes, such as "en" for "English"',
+            default: ["en"],
+            maxItems: 10,
+        })),
+        preferredSubtitleLanguages: Type.Readonly(Type.Array(Type.String(), {
+            title: "Preferred Subtitle Languages",
+            description: 'Subtitle languages ordered by preference. Use short codes, such as "en" for "English"',
+            default: ["en"],
+            maxItems: 10,
+        })),
     }),
 });
 export type Config = Static<typeof Config>;

@@ -1,5 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { Config, configIsFixed } from '$lib/config';
+import { Config } from '$lib/config';
+import { decodeConfig } from './data.remote';
 
 // Strip the symbols this lazy way of just serializing and deserializing.
 // The reason I'm doing this is just so that I don't have to deal with
@@ -7,8 +8,9 @@ import { Config, configIsFixed } from '$lib/config';
 // but still have access to the schema.
 const configSchema =  JSON.parse(JSON.stringify(Config)) as typeof Config;
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ params }) => {
     return {
         schema: configSchema,
+        config: await decodeConfig(params.config),
     };
 };
