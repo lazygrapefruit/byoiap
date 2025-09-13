@@ -32,7 +32,7 @@
 </script>
 
 {#await formValue then fv}
-    <h1>Configure BYOIAP</h1>
+    <h1>Let's tweak your BYOIAP ✨</h1>
 
     <form class="config-form">
         {#each Object.entries(data.schema.properties) as [section, sectionData]}
@@ -89,29 +89,39 @@
                 {/each}
             </section>
         {/each}
-        <div style="display: flex; gap: 0.5rem; margin-top: 0.7rem;">
-            <button type="button" class="submit-btn" onclick={handleShare}>Share</button>
-            <button type="button" class="submit-btn" onclick={handleInstall}>Install</button>
+        <div style="display: flex; gap: 0.6rem; margin-top: 0.7rem;">
+            <button type="button" class="submit-btn primary" onclick={handleShare}>Share link 🔗</button>
+            <button type="button" class="submit-btn secondary" onclick={handleInstall}>Open in Stremio ▶️</button>
         </div>
     </form>
 {/await}
 
 <style>
     h1 {
-        margin-bottom: 1.2rem;
-        font-size: 2rem;
+        margin-bottom: 0.25rem;
+        font-size: 1.75rem;
         text-align: center;
+        color: #213547;
+        font-weight: 700;
+    }
+    .subtitle {
+        text-align: center;
+        color: #4b5563;
+        margin-top: 0;
+        margin-bottom: 1rem;
+        font-size: 0.96rem;
     }
     .config-form {
-        max-width: 540px;
-        margin: 1.5rem auto;
-        padding: 1.2rem 1.5rem;
-        background: #fff;
-        border-radius: 1rem;
-        box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+        max-width: 640px;
+        margin: 1.25rem auto;
+        padding: 1rem 1.25rem;
+        background: linear-gradient(180deg, #fffefc 0%, #fffdf9 100%);
+        border-radius: 1.2rem;
+        box-shadow: 0 8px 30px rgba(33,37,41,0.06);
         display: flex;
         flex-direction: column;
         gap: 0.7rem;
+        border: 1px solid rgba(34,34,36,0.04);
     }
     .config-section {
         padding: 0;
@@ -132,22 +142,28 @@
         margin-bottom: 0.05rem;
     }
     .input {
-        padding: 0.35rem 0.7rem;
-        border: 1px solid #ccc;
-        border-radius: 0.3rem;
+        padding: 0.5rem 0.75rem;
+        border: 1px solid rgba(16,24,40,0.08);
+        border-radius: 0.6rem;
         font-size: 0.98rem;
-        transition: border 0.2s;
+        transition: box-shadow 0.18s, border-color 0.18s;
+        background: #fff;
     }
     .input:focus {
-        border-color: #0070f3;
+        border-color: rgba(59,130,246,0.9);
         outline: none;
+        box-shadow: 0 6px 18px rgba(59,130,246,0.08);
     }
     .section-header {
-        margin-top: 0.5rem;
-        margin-bottom: 0.05rem;
-        font-size: 1.03rem;
-        font-weight: 600;
-        color: #222;
+        display: inline-block;
+        margin-top: 0.6rem;
+        margin-bottom: 0.45rem;
+        font-size: 0.98rem;
+        font-weight: 700;
+        color: #075985;
+        background: rgba(14,165,233,0.06);
+        padding: 0.28rem 0.6rem;
+        border-radius: 999px;
     }
     .section-desc {
         color: #666;
@@ -160,20 +176,29 @@
     }
     .submit-btn {
         margin-top: 0.5rem;
-        padding: 0.7rem 0;
-        background: #0070f3;
+        padding: 0.6rem 0.9rem;
         color: #fff;
         border: none;
-        border-radius: 0.4rem;
-        font-size: 1.05rem;
-        font-weight: 600;
+        border-radius: 0.9rem;
+        font-size: 1rem;
+        font-weight: 700;
         cursor: pointer;
-        transition: background 0.2s;
-        width: 100%;
+        transition: transform 0.09s ease, box-shadow 0.12s ease;
         min-width: 120px;
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
     }
-    .submit-btn:hover {
-        background: #0059c9;
+    .submit-btn:active { transform: translateY(1px); }
+    .submit-btn.primary {
+        background: linear-gradient(90deg, #06b6d4 0%, #0ea5a4 100%);
+        box-shadow: 0 8px 20px rgba(6,182,212,0.16);
+    }
+    .submit-btn.secondary {
+        background: linear-gradient(90deg, #f97316 0%, #fb923c 100%);
+        box-shadow: 0 8px 20px rgba(249,115,22,0.14);
     }
     .input-desc {
         color: #888;
@@ -195,23 +220,21 @@
         flex: 1;
     }
     .remove-btn, .add-btn {
-        padding: 0.35rem 0.7rem;
-        background: #dc3545;
+        padding: 0.38rem 0.6rem;
         color: #fff;
         border: none;
-        border-radius: 0.3rem;
-        font-size: 0.9rem;
+        border-radius: 0.6rem;
+        font-size: 0.88rem;
         cursor: pointer;
-        transition: background 0.2s;
+        transition: transform 0.08s ease, opacity 0.12s ease;
     }
-    .remove-btn:hover {
-        background: #c82333;
+    .remove-btn {
+        background: rgba(239,68,68,0.95);
     }
+    .remove-btn:hover { transform: translateY(-1px); opacity: 0.95; }
     .add-btn {
-        background: #28a745;
+        background: linear-gradient(90deg, #7c3aed 0%, #8b5cf6 100%);
         align-self: flex-start;
     }
-    .add-btn:hover {
-        background: #218838;
-    }
+    .add-btn:hover { transform: translateY(-1px); opacity: 0.98; }
 </style>
