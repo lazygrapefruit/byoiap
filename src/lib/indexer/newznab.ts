@@ -46,12 +46,16 @@ const OPEN_TAG_HANDLER = Symbol("onopentag");
 const OPEN_TAG_START_HANDLER = Symbol("onopentagstart");
 const TEXT_HANDLER = Symbol("ontext");
 
+type XmlParserEntryHandler<T, U extends `on${string}` & keyof sax.SAXParser> = (state: T, value: Parameters<sax.SAXParser[U]>[0]) => void;
+
 interface XmlParserNode<T> {
-    readonly [ATTRIBUTE_HANDLER]?: (state: T, name: Parameters<sax.SAXParser["onattribute"]>[0]) => void;
-    readonly [CLOSE_TAG_HANDLER]?: (state: T, name: Parameters<sax.SAXParser["onclosetag"]>[0]) => void;
-    readonly [OPEN_TAG_HANDLER]?: (state: T, tag: Parameters<sax.SAXParser["onopentag"]>[0]) => void;
-    readonly [OPEN_TAG_START_HANDLER]?: (state: T, tag: Parameters<sax.SAXParser["onopentagstart"]>[0]) => void;
-    readonly [TEXT_HANDLER]?: (state: T, tag: Parameters<sax.SAXParser["ontext"]>[0]) => void;
+    readonly [ATTRIBUTE_HANDLER]?: 
+        | XmlParserEntryHandler<T, "onattribute">
+        | Record<string, XmlParserEntryHandler<T, "onattribute">>;
+    readonly [CLOSE_TAG_HANDLER]?: XmlParserEntryHandler<T, "onclosetag">;
+    readonly [OPEN_TAG_HANDLER]?: XmlParserEntryHandler<T, "onopentag">;
+    readonly [OPEN_TAG_START_HANDLER]?: XmlParserEntryHandler<T, "onopentagstart">;
+    readonly [TEXT_HANDLER]?: XmlParserEntryHandler<T, "ontext">;
     readonly [key: string]: XmlParserNode<T>;
 }
 
@@ -80,11 +84,12 @@ function makeSearchingCaps(key: "movie" | "tv") {
 const CAPS_PARSER: XmlParserNode<CapsParseData> = {
     caps: {
         limits: {
-            [ATTRIBUTE_HANDLER]: (state, { name, value }) => {
-                if (name !== "max") return;
-                state.data.limit = Number.parseInt(value);
-                state.tryFinish?.();
-            }
+            [ATTRIBUTE_HANDLER]: {
+                max: (state, { value }) => {
+                    state.data.limit = Number.parseInt(value);
+                    state.tryFinish?.();
+                },
+            },
         },
         searching: {
             'movie': makeSearchingCaps("movie"),
@@ -111,7 +116,12 @@ function processXml<T>(
 
         saxStream.on("attribute", (attribute) => {
             const top = nodeStack[nodeStack.length - 1];
-            top?.[ATTRIBUTE_HANDLER]?.(state, attribute);
+            const handler = top?.[ATTRIBUTE_HANDLER];
+            if (!handler) return;
+            if (typeof handler === "function")
+                handler(state, attribute);
+            else
+                handler[attribute.name]?.(state, attribute);
         });
         saxStream.on("closetag", (name) => {
             const top = nodeStack[nodeStack.length - 1];
@@ -181,6 +191,7 @@ function mapLanguageToCode(input: string) {
 type BuildingIndexItem = SetOptional<Writable<IndexedItem>, "guid" | "url" | "publishDate" | "title"> & {
     season?: number;
     episode?: number;
+    indexerHost?: string;
 };
 
 interface QueryParseDataInput {
@@ -198,8 +209,11 @@ interface QueryParseData extends QueryParseDataInput {
     activeItem?: BuildingIndexItem;
 }
 
-const ATTRIBUTE_HANDLERS: Record<string, (target: Required<QueryParseData>["activeItem"], value: string) => void> = {
+type AttrHandler = (target: Required<QueryParseData>["activeItem"], value: string) => void;
+
+const CORE_ATTR_HANDLERS: Record<string, AttrHandler> = {
     grabs: (target, value) => target.grabs = Number.parseInt(value),
+    guid: (target, value) => target.guid = value,
     episode: (target, value) => target.episode = Number.parseInt(value),
     language: (target, value) => target.languagesAudio.push(...value.split(" - ").map(mapLanguageToCode)),
     password: (target, value) => target.password = value,
@@ -209,7 +223,16 @@ const ATTRIBUTE_HANDLERS: Record<string, (target: Required<QueryParseData>["acti
     thumbsdown: (target, value) => target.votesDown = Number.parseInt(value),
 };
 
-const DESIRED_ATTRIBUTES = Object.keys(ATTRIBUTE_HANDLERS).join(",");
+const EXTENDED_ATTR_HANDLERS: Record<string, AttrHandler> = {
+    hydraIndexerHost: (target, value) => target.indexerHost = value,
+};
+
+const ATTR_HANDLERS = {
+    ...CORE_ATTR_HANDLERS,
+    ...EXTENDED_ATTR_HANDLERS,
+};
+
+const DESIRED_ATTRIBUTES = Object.keys(CORE_ATTR_HANDLERS).join(",");
 
 const QUERY_PARSER: XmlParserNode<QueryParseData> = {
     rss: {
@@ -256,18 +279,13 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                     };
                 },
                 guid: {
-                    [TEXT_HANDLER]: (state, text) => state.activeItem!.guid = text,
+                    // Prefers attribute, but will use this if needed.
+                    [TEXT_HANDLER]: (state, text) => state.activeItem!.guid ??= text,
                 },
                 enclosure: {
-                    [ATTRIBUTE_HANDLER]: (state, { name, value }) => {
-                        switch (name) {
-                            case "url":
-                                state.activeItem!.url = value;
-                                break;
-                            case "length":
-                                state.activeItem!.size = Number.parseInt(value);
-                                break;
-                        }
+                    [ATTRIBUTE_HANDLER]: {
+                        url: (state, { value }) => state.activeItem!.url = value,
+                        length: (state, { value }) => state.activeItem!.size = Number.parseInt(value),
                     },
                 },
                 episode: {
@@ -287,7 +305,7 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                         const name = attrValue(tag.attributes.name);
                         const value = attrValue(tag.attributes.value);
                         assert(name && value);
-                        ATTRIBUTE_HANDLERS[name]?.(state.activeItem!, value);
+                        ATTR_HANDLERS[name]?.(state.activeItem!, value);
                     },
                 },
             },
@@ -298,7 +316,6 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
 const querySegment = async (url: URL, parseState: QueryParseData, offset: number) => {
     url.searchParams.set("offset", `${offset}`);
 
-    console.log(url);
     const response = await fetch(url);
     const saxStream = sax.createStream(true);
 
@@ -332,18 +349,26 @@ export const newznabIndexer = {
             imdbid: mediaId.imdbId,
         };
         if (mediaId instanceof ShowId) {
+            const showDataPromise = getShowData(mediaId.imdbId);
+
             capsKey = "tv";
             url.searchParams.set("t", "tvsearch");
             url.searchParams.set("season", String(mediaId.season));
             url.searchParams.set("ep", String(mediaId.episode));
-            const showData = await getShowData(mediaId.imdbId);
 
             queryParseInput.season = mediaId.season;
             queryParseInput.episode = mediaId.episode;
 
-            searchIds.rid = showData.tvRageId;
-            searchIds.tvdbid = showData.tvdbId;
-            searchIds.tvmazeid = showData.tvMazeId;
+            // If the indexer already supports imdbid setting the others is not
+            // usually necessary. This makes the queries a little bit faster
+            // because fetching the show ids can take some time. In my testing this
+            // is capable of saving 2-3 seconds.
+            if (!(await capsPromise).tv?.includes("imdbid")) {
+                const showData = await showDataPromise;
+                searchIds.rid = showData.tvRageId;
+                searchIds.tvdbid = showData.tvdbId;
+                searchIds.tvmazeid = showData.tvMazeId;
+            }
         }
         else if (mediaId instanceof MovieId) {
             capsKey = "movie";
