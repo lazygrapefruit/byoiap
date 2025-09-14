@@ -1,3 +1,4 @@
+import assert from "assert";
 import type { Config } from "./config";
 import type { IndexedItem } from "./indexer/types";
 
@@ -9,6 +10,8 @@ function voteScore(item: IndexedItem) {
 export function isCompoundEpisode(title: string) {
     return /s\d{2}e\d{2}e\d{2}/i.test(title);
 }
+
+
 
 function titleScore({ title }: IndexedItem) {
     // Deprioritize compound episodes
@@ -30,66 +33,62 @@ function languageScore(foundLanguages: string[], preferredLanguages: string[]) {
     if (foundLanguages.length < 1) return 0;
     for (let i = 0; i < preferredLanguages.length; ++i) {
         if (foundLanguages.includes(preferredLanguages[i]))
-            return i + 1;
+            return Number.MAX_SAFE_INTEGER - i;
     }
     return -1;
 }
 
-export function makeDisplayCompare(config: Config) {
-    const preferredQualities = config.shared.preferredQualities.toReversed();
-    const preferredAudioLanguages = config.shared.preferredAudioLanguages.toReversed();
-    const preferredSubtitleLanguages = config.shared.preferredSubtitleLanguages.toReversed();
+function preferredQualityScore(expectedQuality: number, preferredQualities: number[]) {
+    const foundIndex = preferredQualities.indexOf(expectedQuality);
+    return foundIndex < 0 ? Number.NEGATIVE_INFINITY : -foundIndex; 
+}
 
-    return (a: IndexedItem, b: IndexedItem) => {
-        const expectedQualityA = a.expectedQuality ?? 0;
-        const expectedQualityB = b.expectedQuality ?? 0;
+export function displayScore(config: Config, item: IndexedItem) {
+    const expectedQuality = item.expectedQuality ?? 0;
 
-        // Preferred qualities get a special higher preference.
-        const preferredQualityScoreDelta = preferredQualities.indexOf(expectedQualityA) - preferredQualities.indexOf(expectedQualityB);
-        if (preferredQualityScoreDelta)
-            return -preferredQualityScoreDelta;
+    return [
+        preferredQualityScore(expectedQuality, config.shared.preferredQualities),
+        expectedQuality,
+        titleScore(item),
+        languageScore(item.languagesSubtitles, config.shared.preferredSubtitleLanguages),
+        languageScore(item.languagesAudio, config.shared.preferredAudioLanguages),
+        voteScore(item),
+        item.publishDate.getTime(),
+        item.url,
+    ];
+}
 
-        // Sort qualities descending by default
-        const qualityScoreDelta = expectedQualityA - expectedQualityB;
-        if (qualityScoreDelta)
-            return -qualityScoreDelta;
+const DISPLAY_SCORE = Symbol("DisplayScore");
 
-        // Deal with quality issues, such as compound episodes
-        const titleScoreDeleta = titleScore(a) - titleScore(b);
-        if (titleScoreDeleta)
-            return -titleScoreDeleta;
+interface ScoredItem extends IndexedItem {
+    [DISPLAY_SCORE]: ReturnType<typeof displayScore>;
+}
 
-        // Prefer subtitles being available and appropriately tagged
-        const subtitleScoreDelta = languageScore(a.languagesSubtitles, preferredSubtitleLanguages)
-            - languageScore(b.languagesSubtitles, preferredSubtitleLanguages);
-        if (subtitleScoreDelta)
-            return -subtitleScoreDelta;
+export function compareDisplayScore(a: ScoredItem[typeof DISPLAY_SCORE], b: ScoredItem[typeof DISPLAY_SCORE]) {
+    assert(a.length === b.length);
+    const length = a.length;
 
-        // Prefer audio being available and appropriately tagged
-        const audioScoreDelta = languageScore(a.languagesAudio, preferredAudioLanguages)
-            - languageScore(b.languagesAudio, preferredAudioLanguages);
-        if (audioScoreDelta)
-            return -audioScoreDelta;
+    for (let i = 0; i < length; ++i) {
+        const ia = a[i];
+        const ib = b[i];
+        if (ia !== ib)
+            return ia < ib ? 1 : -1;
+    }
+    return 0;
+}
 
-        // Then by votes (votes can approximate if it is likely to be up).
-        const voteScoreDelta = voteScore(a) - voteScore(b);
-        if (voteScoreDelta)
-            return -voteScoreDelta;
+function compareScoredItems(a: ScoredItem, b: ScoredItem) {
+    return compareDisplayScore(a[DISPLAY_SCORE], b[DISPLAY_SCORE]);
+}
 
-        // // Not sure if age or number of grabs is a better metric. For now I'll assume newer pubDate is better.
-        const pubDateDelta = a.publishDate.getTime() - b.publishDate.getTime();
-        if (pubDateDelta)
-            return -pubDateDelta;
+export function displaySort(config: Config, items: IndexedItem[]) {
+    // Score the items
+    const scored = items as ScoredItem[];
+    for (const item of scored)
+        item[DISPLAY_SCORE] = displayScore(config, item);
 
-        // Trying grabs instead. Maybe the better solution is some combination of the two.
-        // const grabsDelta = a.grabs - b.grabs;
-        // if (grabsDelta)
-        //     return -grabsDelta;
-
-        // This is exceedingly unlikely to ever happen (requires identical publish time, votes, and quality), but
-        // to keep the sort stable the fallback will just be the URL.
-        return  a.url < b.url ? 1 : -1;
-    };
+    // Sort the items
+    scored.sort(compareScoredItems);
 }
 
 export function getExpectedQuality(title: string) {
@@ -98,16 +97,14 @@ export function getExpectedQuality(title: string) {
 }
 
 export function getExpectedEpisode(title: string) {
-    // Regular expression to match the pattern SxxExx or Sxxexx
-    const regex = /(s)(?<season>\d{2})(e)(?<episode>\d{2})/i;
-
-    const match = title.match(regex);
+    const regex = /(?<![a-z0-9])s(?<season>\d{2})(?:e(?<episode>\d{2}))?(?![a-z0-9])/i;
+    let match = title.match(regex);
     if (!match?.groups)
         return undefined;
 
     const { season, episode } = match.groups;
     return {
         season: Number.parseInt(season),
-        episode: Number.parseInt(episode),
+        episode: episode ? Number.parseInt(episode) : undefined,
     };
 }

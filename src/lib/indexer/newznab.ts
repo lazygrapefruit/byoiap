@@ -267,6 +267,13 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                             return;
                         if (activeItem.episode !== undefined && state.episode !== activeItem.episode)
                             return;
+
+                        // In my experience seasons without episodes are not well-suited to
+                        // being part of the results because there is not a consistent way to
+                        // identify if the episode is present within or which file it would be
+                        // if it is present.
+                        if (activeItem.season !== undefined && activeItem.episode === undefined)
+                            return;
                     }
 
                     state.items.push(toPush);
@@ -342,7 +349,7 @@ export const newznabIndexer = {
         url.searchParams.set("apikey", indexerOptions.apiKey);
         url.searchParams.set("o", "xml");
         url.searchParams.set("attrs", DESIRED_ATTRIBUTES);
-        url.searchParams.set("extended", "1");
+        //url.searchParams.set("extended", "1");
 
         let capsKey: keyof Awaited<typeof capsPromise>;
         let searchIds: PotentialSearchIds = {
@@ -380,7 +387,6 @@ export const newznabIndexer = {
 
         const searchCaps = (await capsPromise)[capsKey];
         const inserted = insertSearchIds(url.searchParams, searchCaps, searchIds);
-        console.log(await capsPromise);
         if (!inserted)
             return [];
 

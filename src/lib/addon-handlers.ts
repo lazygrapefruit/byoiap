@@ -4,7 +4,7 @@ import { ALL_INDEXERS } from "./indexer";
 import type { IndexedItem } from "./indexer/types";
 import { MovieId, ShowId, type MediaId } from "./media-id";
 import { ALL_PROVIDERS } from "./provider";
-import { getExpectedQuality, makeDisplayCompare } from "./title-utils";
+import { getExpectedQuality, displaySort } from "./title-utils";
 import { DownloadSource } from "./provider/types";
 import prettyBytes from "pretty-bytes";
 import { capitalCase } from "change-case";
@@ -142,7 +142,7 @@ export async function streamHandler(args: StreamHandlerArgs) {
     // Perform an initial sort and calculate the default sort order. The default order makes it easier
     // to insert the streams in the right order when dealing with things like that the cached items
     // go up front.
-    indexedItems.sort(makeDisplayCompare(config));
+    displaySort(config, indexedItems);
     const urlToSortOrder: Record<string, number> = Object.create(null);
     indexedItems.forEach((item, index) => {
         urlToSortOrder[item.url] = index;
