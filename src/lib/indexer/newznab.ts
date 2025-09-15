@@ -203,10 +203,55 @@ interface QueryParseDataInput {
 interface QueryParseData extends QueryParseDataInput {
     // Output.
     readonly items: IndexedItem[];
+    readonly promises: Promise<unknown>[];
     processedItemCount: number;
 
     // Internal state
     activeItem?: BuildingIndexItem;
+}
+
+function processItem(state: QueryParseData, item: BuildingIndexItem) {
+    if (state.season !== undefined || state.episode !== undefined) {
+        // Update season and episode from title, if useful.
+        if (item.season === undefined || item.episode === undefined) {
+            const expected = getExpectedEpisode(item.title!);
+            if (expected) {
+                item.season ??= expected.season;
+                item.episode ??= expected.episode;
+            }
+        }
+
+        // Filter out episodes that contain non-matching episode data
+        if (item.season !== undefined && state.season !== item.season)
+            return;
+        if (item.episode !== undefined && state.episode !== item.episode)
+            return;
+
+        // In my experience seasons without episodes are not well-suited to
+        // being part of the results because there is not a consistent way to
+        // identify if the episode is present within or which file it would be
+        // if it is present.
+        if (item.season !== undefined && item.episode === undefined)
+            return;
+    }
+
+    const toPush = Value.Parse(IndexedItem, item) as Writable<IndexedItem>;
+    state.items.push(toPush);
+
+    // Unwrap URLs pointing to the TorBox search API because redirect links to
+    // them, such as may come through NZBHydra2, are not as useful. Ideally this
+    // wouldn't be required because TorBox URLs probably shouldn't be proxied in
+    // the first place due to the fact that they neither contain API keys nor can
+    // be used to fetch the underlying NZB.
+    if (item.indexerHost === "search-api.torbox.app") {
+        state.promises.push(fetch(toPush.url, {
+            redirect: "manual",
+        }).then((response) => {
+            const location = response.headers.get("location");
+            if (location)
+                toPush.url = location;
+        }));
+    }
 }
 
 type AttrHandler = (target: Required<QueryParseData>["activeItem"], value: string) => void;
@@ -249,34 +294,7 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                     assert(activeItem);
                     state.activeItem = undefined;
                     state.processedItemCount += 1;
-
-                    const toPush = Value.Parse(IndexedItem, activeItem);
-
-                    if (state.season !== undefined || state.episode !== undefined) {
-                        // Update season and episode from title, if useful.
-                        if (activeItem.season === undefined || activeItem.episode === undefined) {
-                            const expected = getExpectedEpisode(toPush.title);
-                            if (expected) {
-                                activeItem.season ??= expected.season;
-                                activeItem.episode ??= expected.episode;
-                            }
-                        }
-
-                        // Filter out episodes that contain non-matching episode data
-                        if (activeItem.season !== undefined && state.season !== activeItem.season)
-                            return;
-                        if (activeItem.episode !== undefined && state.episode !== activeItem.episode)
-                            return;
-
-                        // In my experience seasons without episodes are not well-suited to
-                        // being part of the results because there is not a consistent way to
-                        // identify if the episode is present within or which file it would be
-                        // if it is present.
-                        if (activeItem.season !== undefined && activeItem.episode === undefined)
-                            return;
-                    }
-
-                    state.items.push(toPush);
+                    processItem(state, activeItem);
                 },
                 [OPEN_TAG_HANDLER]: (state) => {
                     assert(!state.activeItem);
@@ -393,7 +411,10 @@ export const newznabIndexer = {
         const limit = (await capsPromise).limit ?? 50;
         url.searchParams.set("limit", `${limit}`);
 
-        const result: IndexedItem[] = [];
+        const output = {
+            items: new Array<IndexedItem>(),
+            promises: new Array<Promise<void>>(),
+        };
 
         // This makes it so we can get all the segments.
         let followupSegments: Promise<void>[] = [];
@@ -401,11 +422,16 @@ export const newznabIndexer = {
         // First just start querying with an offset of 0
         const queryData: QueryParseData = {
             ...queryParseInput,
+            ...output,
             onTotalItems: (totalCount) => {
-                for (let offset = limit; offset < totalCount; offset += limit)
-                    followupSegments.push(querySegment(url, { ...queryParseInput, items: result, processedItemCount: 0 }, offset));
+                for (let offset = limit; offset < totalCount; offset += limit) {
+                    followupSegments.push(querySegment(url, {
+                        ...queryParseInput,
+                        ...output,
+                        processedItemCount: 0,
+                    }, offset));
+                }
             },
-            items: result,
             processedItemCount: 0,
         };
         await querySegment(url, queryData, 0);
@@ -413,7 +439,10 @@ export const newznabIndexer = {
         // The other queries should have been started by now, so they can now be awaited here.
         await Promise.all(followupSegments);
 
-        return result;
+        // The output may have some blocking promises on cleaning up data.
+        await Promise.all(output.promises);
+
+        return output.items;
     },
 } as const satisfies Indexer<NewznabConfig>;
 
