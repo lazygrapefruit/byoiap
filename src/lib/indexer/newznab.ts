@@ -239,10 +239,9 @@ function processItem(state: QueryParseData, item: BuildingIndexItem) {
     state.items.push(toPush);
 
     // Unwrap URLs pointing to the TorBox search API because redirect links to
-    // them, such as may come through NZBHydra2, are not as useful. Ideally this
-    // wouldn't be required because TorBox URLs probably shouldn't be proxied in
-    // the first place due to the fact that they neither contain API keys nor can
-    // be used to fetch the underlying NZB.
+    // them, such as may come through NZBHydra2, are not as useful. The redirect
+    // links do not behave as nicely with TorBox's cache because it uses the
+    // passed-in link for generating the cache key.
     if (item.indexerHost === "search-api.torbox.app") {
         state.promises.push(fetch(toPush.url, {
             redirect: "manual",
