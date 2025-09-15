@@ -244,6 +244,7 @@ function processItem(state: QueryParseData, item: BuildingIndexItem) {
     // passed-in link for generating the cache key.
     if (item.indexerHost === "search-api.torbox.app") {
         state.promises.push(fetch(toPush.url, {
+            method: "HEAD",
             redirect: "manual",
         }).then((response) => {
             const location = response.headers.get("location");
@@ -365,8 +366,8 @@ export const newznabIndexer = {
         const url = new URL(indexerOptions.url);
         url.searchParams.set("apikey", indexerOptions.apiKey);
         url.searchParams.set("o", "xml");
-        url.searchParams.set("attrs", DESIRED_ATTRIBUTES);
-        //url.searchParams.set("extended", "1");
+        //url.searchParams.set("attrs", DESIRED_ATTRIBUTES);
+        url.searchParams.set("extended", "1");
 
         let capsKey: keyof Awaited<typeof capsPromise>;
         let searchIds: PotentialSearchIds = {
