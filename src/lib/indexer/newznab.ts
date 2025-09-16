@@ -6,7 +6,7 @@ import sax from "sax";
 import { Readable } from "node:stream";
 import assert from "node:assert";
 import type { SetOptional, Writable } from "type-fest";
-import { languageNameToCode } from "$lib/language-name-to-code";
+import { countryCodeToLanguageCode, languageNameToCode } from "$lib/language-conversion";
 import { getExpectedEpisode } from "$lib/title-utils";
 
 const ID = "newznab";
@@ -182,12 +182,6 @@ async function getCaps(config: NewznabConfig) {
     return parseState.data;
 }
 
-function mapLanguageToCode(input: string) {
-    const code = languageNameToCode(input);
-    if (code?.length === 2) return code;
-    return input;
-}
-
 type BuildingIndexItem = SetOptional<Writable<IndexedItem>, "guid" | "url" | "publishDate" | "title"> & {
     season?: number;
     episode?: number;
@@ -211,6 +205,7 @@ interface QueryParseData extends QueryParseDataInput {
 }
 
 function processItem(state: QueryParseData, item: BuildingIndexItem) {
+    // Filter out items that shouldn't be present due to non-matching metadata
     if (state.season !== undefined || state.episode !== undefined) {
         // Update season and episode from title, if useful.
         if (item.season === undefined || item.episode === undefined) {
@@ -235,6 +230,10 @@ function processItem(state: QueryParseData, item: BuildingIndexItem) {
             return;
     }
 
+    // De-duplicate languages
+    item.languagesAudio = [...new Set(item.languagesAudio)];
+    item.languagesSubtitles = [...new Set(item.languagesSubtitles)];
+
     const toPush = Value.Parse(IndexedItem, item) as Writable<IndexedItem>;
     state.items.push(toPush);
 
@@ -254,16 +253,33 @@ function processItem(state: QueryParseData, item: BuildingIndexItem) {
     }
 }
 
+// I've encountered languages in a few different formats. The ones I've
+// seen so far are the language, like English or Spanish, and country
+// codes, like US or MX.
+function mapLanguageToCode(str: string) {
+    let code = languageNameToCode(str);
+    if (code?.length === 2) return code;
+    code = countryCodeToLanguageCode(str);
+    if (code?.length === 2) return code;
+    return str;
+}
+
+function extractLanguages(str: string) {
+    const matches = str.match(/\w+/g);
+    if (!matches) return [];
+    return matches.map(mapLanguageToCode);
+}
+
 type AttrHandler = (target: Required<QueryParseData>["activeItem"], value: string) => void;
 
 const CORE_ATTR_HANDLERS: Record<string, AttrHandler> = {
     grabs: (target, value) => target.grabs = Number.parseInt(value),
     guid: (target, value) => target.guid = value,
     episode: (target, value) => target.episode = Number.parseInt(value),
-    language: (target, value) => target.languagesAudio.push(...value.split(" - ").map(mapLanguageToCode)),
+    language: (target, value) => target.languagesAudio.push(...extractLanguages(value)),
     password: (target, value) => target.password = value,
     season: (target, value) => target.season = Number.parseInt(value),
-    subs: (target, value) => target.languagesSubtitles.push(...value.split(" - ").map(mapLanguageToCode)),
+    subs: (target, value) => target.languagesSubtitles.push(...extractLanguages(value)),
     thumbsup: (target, value) => target.votesUp = Number.parseInt(value),
     thumbsdown: (target, value) => target.votesDown = Number.parseInt(value),
 };
@@ -303,10 +319,6 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                         languagesSubtitles: [],
                     };
                 },
-                guid: {
-                    // Prefers attribute, but will use this if needed.
-                    [TEXT_HANDLER]: (state, text) => state.activeItem!.guid ??= text,
-                },
                 enclosure: {
                     [ATTRIBUTE_HANDLER]: {
                         url: (state, { value }) => state.activeItem!.url = value,
@@ -315,6 +327,13 @@ const QUERY_PARSER: XmlParserNode<QueryParseData> = {
                 },
                 episode: {
                     [TEXT_HANDLER]: (state, text) => state.activeItem!.episode = Number.parseInt(text),
+                },
+                guid: {
+                    // Prefers attribute, but will use this if needed.
+                    [TEXT_HANDLER]: (state, text) => state.activeItem!.guid ??= text,
+                },
+                language: {
+                    [TEXT_HANDLER]: (state, text) => state.activeItem!.languagesAudio.push(...extractLanguages(text)),
                 },
                 pubDate: {
                     [TEXT_HANDLER]: (state, text) => state.activeItem!.publishDate = parseDate(text),
@@ -366,8 +385,8 @@ export const newznabIndexer = {
         const url = new URL(indexerOptions.url);
         url.searchParams.set("apikey", indexerOptions.apiKey);
         url.searchParams.set("o", "xml");
-        //url.searchParams.set("attrs", DESIRED_ATTRIBUTES);
-        url.searchParams.set("extended", "1");
+        url.searchParams.set("attrs", DESIRED_ATTRIBUTES);
+        //url.searchParams.set("extended", "1");
 
         let capsKey: keyof Awaited<typeof capsPromise>;
         let searchIds: PotentialSearchIds = {

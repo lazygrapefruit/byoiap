@@ -8,6 +8,18 @@ export const LANGUAGE_NAME_TO_CODE = Object.freeze(Object.fromEntries(
     })
 ));
 
+// https://stackoverflow.com/a/77771446
+export function countryCodeToLanguageCode(country: string) {
+    try {
+        const locale = new Intl.Locale("und", { region: country });
+        const maximizedLocal = locale.maximize();
+        return maximizedLocal.language;
+    }
+    catch (_err) {
+        return undefined;
+    }
+}
+
 export function languageNameToCode(name: string): string | undefined {
     return LANGUAGE_NAME_TO_CODE[name.toLowerCase()];
 }
