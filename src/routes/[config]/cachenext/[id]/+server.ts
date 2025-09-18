@@ -88,7 +88,7 @@ export const GET: RequestHandler = async ({ url, params }) => {
         {
             let bestMatchingCount = -1;
             for (const item of items) {
-                item.expectedQuality ??= getExpectedQuality(title);
+                item.expectedQuality ??= getExpectedQuality(item.title);
                 if (item.expectedQuality !== targetQuality)
                     continue;
 
