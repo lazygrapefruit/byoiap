@@ -135,10 +135,6 @@ export async function streamHandler(args: StreamHandlerArgs) {
         );
     }
 
-    // Insert expected quality
-    for (const item of indexedItems)
-        item.expectedQuality = getExpectedQuality(item.title);
-
     // Perform an initial sort and calculate the default sort order. The default order makes it easier
     // to insert the streams in the right order when dealing with things like that the cached items
     // go up front.

@@ -44,6 +44,7 @@ function preferredQualityScore(expectedQuality: number, preferredQualities: numb
 }
 
 export function displayScore(config: Config, item: IndexedItem) {
+    item.expectedQuality ??= getExpectedQuality(item.title);
     const expectedQuality = item.expectedQuality ?? 0;
 
     return [
