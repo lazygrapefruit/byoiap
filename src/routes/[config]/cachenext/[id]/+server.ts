@@ -5,6 +5,7 @@ import { ALL_PROVIDERS } from '$lib/provider';
 import { ALL_INDEXERS } from '$lib/indexer';
 import { getShowData, ShowId } from '$lib/media-id';
 import { compareDisplayScore, displayScore, getExpectedQuality, isCompoundEpisode } from '$lib/title-utils';
+import type { IndexedItem } from '$lib/indexer/types';
 
 function replaceEpisodeNumber(input: string, targetSeason: number, targetEpisode: number) {
     // Regular expression to match the pattern SxxExx or Sxxexx
@@ -57,6 +58,7 @@ export const GET: RequestHandler = async ({ url, params }) => {
     if (!provider)
         errorAndLog(400, `${config.provider.id} does not have a registered provider`);
 
+    const cacheChecker = provider.buildCacheChecker(config.provider);
     const showId = new ShowId(params.id);
     const showData = await getShowData(showId.imdbId);
 
@@ -77,11 +79,12 @@ export const GET: RequestHandler = async ({ url, params }) => {
         // Construct the show id in a less silly way.
         const nextEpisodeId = `${showId.imdbId}:${nextEpisodeSeason}:${nextEpisodeNumber}`;
         const items = await indexer.query(config.indexer, new ShowId(nextEpisodeId));
+        const cachePromise = cacheChecker(items); // Populates status in the items
 
         const targetQuality = getExpectedQuality(title);
         const targetTitle = replaceEpisodeNumber(title, nextEpisodeSeason, nextEpisodeNumber);
 
-        let bestItem;
+        let bestItem: IndexedItem | undefined;
 
         // First pass looks for the item with the same quality that has the best
         // name match.
@@ -103,19 +106,29 @@ export const GET: RequestHandler = async ({ url, params }) => {
             }
         }
 
+        // Since we use status below here it needs to be awaited here
+        await cachePromise;
+
+        // If the best item is failed then unset it so that we find a new best item
+        if (bestItem?.status === "failed")
+            bestItem = undefined;
+
         // If that failed that means there are no items with the same quality to
         // choose from. So now the best item is just whatever would've been at the
         // front of the display list when sorted.
         if (!bestItem && items.length) {
-            bestItem = items[0];
-            let bestDisplayScore = displayScore(config, bestItem);
-            for (let i = 1; i < items.length; ++i) {
-                const currentItem = items[i];
-                const currentDisplayScore = displayScore(config, currentItem);
-                if (compareDisplayScore(currentDisplayScore, bestDisplayScore) < 0) {
-                    bestItem = currentItem;
-                    bestDisplayScore = currentDisplayScore;
-                }
+            let bestDisplayScore: ReturnType<typeof displayScore> | undefined;
+            for (const item of items) {
+                // Don't pick a failed item.
+                if (item.status === "failed")
+                    continue;
+
+                const currentDisplayScore = displayScore(config, item);
+                if (bestDisplayScore && (compareDisplayScore(currentDisplayScore, bestDisplayScore) > 0))
+                    continue;
+
+                bestItem = item;
+                bestDisplayScore = currentDisplayScore;
             }
         }
 
@@ -123,6 +136,14 @@ export const GET: RequestHandler = async ({ url, params }) => {
             errorAndLog(400, `Unable to find episode stream matching ${nextEpisodeId}`);
 
         console.log(`[cachenext] "${title}" + ${i + 1} = "${bestItem.title}"`);
+
+        // If the best item has a relevant status then the precaching can be skipped.
+        switch (bestItem.status) {
+            case "cached":
+            case "downloading":
+            case "ready":
+                continue;
+        }
 
         await provider.precache(config.provider, {
             kind: "usenet",
