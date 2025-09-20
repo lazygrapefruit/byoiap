@@ -1,6 +1,6 @@
 import addonInterface from "$lib/addon";
 import { INJECTED_CONFIG_KEY, type HandlerConfig } from "$lib/addon-handlers";
-import { configDeserialize } from "$lib/config";
+import { configDeserialize } from "$lib/server/config";
 import { error, json } from "@sveltejs/kit";
 
 interface Params {

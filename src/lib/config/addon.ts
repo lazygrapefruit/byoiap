@@ -1,12 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { IndexerConfig } from "$lib/indexer";
 import { ProviderConfig } from "$lib/provider";
-import { CborEncoder } from '@jsonjoy.com/json-pack/lib/cbor/CborEncoder';
-import { CborDecoderBase } from '@jsonjoy.com/json-pack/lib/cbor/CborDecoderBase';
-import zlib from "zlib";
-import { Value } from '@sinclair/typebox/value';
-import { promisify } from 'util';
-import assert from 'assert';
 
 export const AddonConfig = Type.Object({
     indexer: IndexerConfig,
@@ -53,37 +47,3 @@ export const AddonConfig = Type.Object({
     }),
 });
 export type AddonConfig = Static<typeof AddonConfig>;
-
-const encoder = new CborEncoder();
-const decoder = new CborDecoderBase();
-const compress = promisify(zlib.brotliCompress);
-const decompress = promisify(zlib.brotliDecompress);
-
-async function addonConfigSerializeB64(config: AddonConfig) {
-    const compressed = await compress(encoder.encode(Value.Clean(AddonConfig, config)));
-    return compressed.toString("base64url");
-}
-
-async function addonConfigDeserializeB64(configStr: string) {
-    const decoded = decoder.decode(await decompress(Buffer.from(configStr, "base64url")));
-    return Value.Parse(AddonConfig, decoded);
-}
-
-const FIXED_CONFIG = (() => {
-    if (!process.env.FIXED_CONFIG) return undefined;
-    return addonConfigDeserializeB64(process.env.FIXED_CONFIG);
-})();
-
-function addonConfigSerializeFixed() {
-    return "fixed";
-}
-
-function addonConfigDeserializedFixed(configStr: string) {
-    assert(configStr === "fixed");
-    assert(FIXED_CONFIG);
-    return FIXED_CONFIG;
-}
-
-export const configIsFixed = Boolean(FIXED_CONFIG);
-export const configSerialize = configIsFixed ? addonConfigSerializeFixed : addonConfigSerializeB64;
-export const configDeserialize = configIsFixed ? addonConfigDeserializedFixed : addonConfigDeserializeB64;

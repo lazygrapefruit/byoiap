@@ -1,5 +1,6 @@
 import { query } from '$app/server';
-import { AddonConfig, configDeserialize, configIsFixed, configSerialize } from '$lib/config';
+import { AddonConfig } from '$lib/config/addon';
+import { configDeserialize, configIsFixed, configSerialize } from '$lib/server/config';
 import { Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
@@ -10,7 +11,7 @@ export const encodeConfig = query("unchecked", async (formValue: AddonConfig) =>
 
 export const decodeConfig = query("unchecked", async (configStr: string | undefined) => {
     Value.Assert(Type.Union([Type.String(), Type.Undefined()]), configStr);
-    if (configStr && !configIsFixed) {
+    if (configStr && !(await configIsFixed())) {
         try {
             return await configDeserialize(configStr);
         }

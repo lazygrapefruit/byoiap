@@ -1,4 +1,4 @@
-import { configDeserialize } from '$lib/config';
+import { configDeserialize } from '$lib/server/config';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { ALL_PROVIDERS } from '$lib/provider';
