@@ -20,22 +20,7 @@ While this is just a basic node application that you can build however you want,
 ### Configuration
 
 * PORT - Port to run on. Defaults to 3000. It is recommended you set this but do not directly expose it. Prefer to leave exposing it up to something more secure, such as a reverse proxy.
-* /config/config.toml is a TOML file that contains configuration. The file path can be modified with CONFIG_PATH. An example that has two named fixed configs. When any named config sections are present only names are supported and the configuration page intentionally no longer functions.
-```
-[named.foo]
-indexer.id = "newznab"
-indexer.url = "..."
-indexer.apiKey = "..."
-provider.id = "torbox"
-provider.apiKey = "..."
-
-[named.bar]
-indexer.id = "newznab"
-indexer.url = "..."
-indexer.apiKey = "..."
-provider.id = "torbox"
-provider.apiKey = "..."
-```
+* /config/config.toml is a TOML file that contains configuration. The file path can be modified with CONFIG_PATH. When any named config sections are present only names are supported and the configuration page intentionally no longer functions. An example config file, one that that is fully commented out, resides at [byoiap.toml](byoiap.toml).
 
 ## Known Issues
 
