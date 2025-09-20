@@ -20,7 +20,22 @@ While this is just a basic node application that you can build however you want,
 ### Configuration
 
 * PORT - Port to run on. Defaults to 3000. It is recommended you set this but do not directly expose it. Prefer to leave exposing it up to something more secure, such as a reverse proxy.
-* FIXED_CONFIG - The value to use for fixed configuration. If hosting this on a network where there could be other things accessible via localhost then setting this is recommended as it effectively squashes the configuration page. Unfortunately, at present this value can be frustrating to get because of how it is encoded. At present the easiest way to run without this, navigate to `/configure`, configure it on the page, click to generate a share link, and then extract the configuration section from the link on your clipboard (the text between the first and second `/`). Long term I plan to replace this with a proper configuration file.
+* /config/config.toml is a TOML file that contains configuration. The file path can be modified with CONFIG_PATH. An example that has two named fixed configs. When any named config sections are present only names are supported and the configuration page intentionally no longer functions.
+```
+[named.foo]
+indexer.id = "newznab"
+indexer.url = "..."
+indexer.apiKey = "..."
+provider.id = "torbox"
+provider.apiKey = "..."
+
+[named.bar]
+indexer.id = "newznab"
+indexer.url = "..."
+indexer.apiKey = "..."
+provider.id = "torbox"
+provider.apiKey = "..."
+```
 
 ## Known Issues
 
