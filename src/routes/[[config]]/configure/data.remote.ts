@@ -1,10 +1,10 @@
 import { query } from '$app/server';
-import { Config, configDeserialize, configIsFixed, configSerialize } from '$lib/config';
+import { AddonConfig, configDeserialize, configIsFixed, configSerialize } from '$lib/config';
 import { Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
-export const encodeConfig = query("unchecked", async (formValue: Config) => {
-    Value.Assert(Config, formValue);
+export const encodeConfig = query("unchecked", async (formValue: AddonConfig) => {
+    Value.Assert(AddonConfig, formValue);
     return configSerialize(formValue);
 });
 
@@ -19,5 +19,5 @@ export const decodeConfig = query("unchecked", async (configStr: string | undefi
             // Do nothing
         }
     }
-    return Value.Create(Config);
+    return Value.Create(AddonConfig);
 });

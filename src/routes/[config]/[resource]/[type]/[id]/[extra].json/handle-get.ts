@@ -1,5 +1,5 @@
 import addonInterface from "$lib/addon";
-import { INJECTED_CONFIG_KEY, type AddonConfig } from "$lib/addon-handlers";
+import { INJECTED_CONFIG_KEY, type HandlerConfig } from "$lib/addon-handlers";
 import { configDeserialize } from "$lib/config";
 import { error, json } from "@sveltejs/kit";
 
@@ -18,7 +18,7 @@ async function parseConfig(url: URL, configStr: string) {
             origin: url.origin,
             configStr,
         },
-    } as AddonConfig;
+    } as HandlerConfig;
 }
 
 // For some strange reason Stremio decided to make extra be a raw query string. This

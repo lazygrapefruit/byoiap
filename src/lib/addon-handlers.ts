@@ -1,17 +1,17 @@
 import { fallbackLangFlag } from "language-emoji";
-import type { Config } from "./config";
+import type { AddonConfig } from "./config";
 import { ALL_INDEXERS } from "./indexer";
 import type { IndexedItem } from "./indexer/types";
 import { MovieId, ShowId, type MediaId } from "./media-id";
 import { ALL_PROVIDERS } from "./provider";
-import { getExpectedQuality, displaySort } from "./title-utils";
+import { displaySort } from "./title-utils";
 import { DownloadSource } from "./provider/types";
 import prettyBytes from "pretty-bytes";
 import { capitalCase } from "change-case";
 
 export const INJECTED_CONFIG_KEY = Symbol("InjectedConfig");
 
-export interface AddonConfig extends Config {
+export interface HandlerConfig extends AddonConfig {
     readonly [INJECTED_CONFIG_KEY]: {
         readonly configStr: string;
         readonly origin: string;
@@ -22,7 +22,7 @@ interface StreamHandlerArgs {
     readonly type: string;
     readonly id: string;
     readonly extra?: unknown;
-    readonly config: AddonConfig;
+    readonly config: HandlerConfig;
 }
 
 const MINIMUM_PER_QUALITY = 5;
@@ -49,7 +49,7 @@ function languageCodeToFlag(code: string) {
     return (code && fallbackLangFlag(code)) || '�';
 }
 
-function itemToStream(config: AddonConfig, item: IndexedItem, baseCacheNextUrl: URL | undefined) {
+function itemToStream(config: HandlerConfig, item: IndexedItem, baseCacheNextUrl: URL | undefined) {
     const { configStr, origin } = config[INJECTED_CONFIG_KEY];
     const url = new URL(`${configStr}/resolve`, origin);
     url.searchParams.set("kind", "usenet");

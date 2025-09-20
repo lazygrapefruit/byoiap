@@ -8,7 +8,7 @@ import { Value } from '@sinclair/typebox/value';
 import { promisify } from 'util';
 import assert from 'assert';
 
-export const Config = Type.Object({
+export const AddonConfig = Type.Object({
     indexer: IndexerConfig,
     provider: ProviderConfig,
     shared: Type.Object({
@@ -52,38 +52,38 @@ export const Config = Type.Object({
         })),
     }),
 });
-export type Config = Static<typeof Config>;
+export type AddonConfig = Static<typeof AddonConfig>;
 
 const encoder = new CborEncoder();
 const decoder = new CborDecoderBase();
 const compress = promisify(zlib.brotliCompress);
 const decompress = promisify(zlib.brotliDecompress);
 
-async function configSerializeB64(config: Config) {
-    const compressed = await compress(encoder.encode(Value.Clean(Config, config)));
+async function addonConfigSerializeB64(config: AddonConfig) {
+    const compressed = await compress(encoder.encode(Value.Clean(AddonConfig, config)));
     return compressed.toString("base64url");
 }
 
-async function configDeserializeB64(configStr: string) {
+async function addonConfigDeserializeB64(configStr: string) {
     const decoded = decoder.decode(await decompress(Buffer.from(configStr, "base64url")));
-    return Value.Parse(Config, decoded);
+    return Value.Parse(AddonConfig, decoded);
 }
 
 const FIXED_CONFIG = (() => {
     if (!process.env.FIXED_CONFIG) return undefined;
-    return configDeserializeB64(process.env.FIXED_CONFIG);
+    return addonConfigDeserializeB64(process.env.FIXED_CONFIG);
 })();
 
-function configSerializeFixed() {
+function addonConfigSerializeFixed() {
     return "fixed";
 }
 
-function configDeserializedFixed(configStr: string) {
+function addonConfigDeserializedFixed(configStr: string) {
     assert(configStr === "fixed");
     assert(FIXED_CONFIG);
     return FIXED_CONFIG;
 }
 
 export const configIsFixed = Boolean(FIXED_CONFIG);
-export const configSerialize = configIsFixed ? configSerializeFixed : configSerializeB64;
-export const configDeserialize = configIsFixed ? configDeserializedFixed : configDeserializeB64;
+export const configSerialize = configIsFixed ? addonConfigSerializeFixed : addonConfigSerializeB64;
+export const configDeserialize = configIsFixed ? addonConfigDeserializedFixed : addonConfigDeserializeB64;

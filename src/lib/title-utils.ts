@@ -1,5 +1,5 @@
 import assert from "assert";
-import type { Config } from "./config";
+import type { AddonConfig } from "./config";
 import type { IndexedItem } from "./indexer/types";
 
 function voteScore(item: IndexedItem) {
@@ -10,8 +10,6 @@ function voteScore(item: IndexedItem) {
 export function isCompoundEpisode(title: string) {
     return /s\d{2}e\d{2}e\d{2}/i.test(title);
 }
-
-
 
 function titleScore({ title }: IndexedItem) {
     // Deprioritize compound episodes
@@ -43,7 +41,7 @@ function preferredQualityScore(expectedQuality: number, preferredQualities: numb
     return foundIndex < 0 ? Number.NEGATIVE_INFINITY : -foundIndex; 
 }
 
-export function displayScore(config: Config, item: IndexedItem) {
+export function displayScore(config: AddonConfig, item: IndexedItem) {
     item.expectedQuality ??= getExpectedQuality(item.title);
     const expectedQuality = item.expectedQuality ?? 0;
 
@@ -82,7 +80,7 @@ function compareScoredItems(a: ScoredItem, b: ScoredItem) {
     return compareDisplayScore(a[DISPLAY_SCORE], b[DISPLAY_SCORE]);
 }
 
-export function displaySort(config: Config, items: IndexedItem[]) {
+export function displaySort(config: AddonConfig, items: IndexedItem[]) {
     // Score the items
     const scored = items as ScoredItem[];
     for (const item of scored)
