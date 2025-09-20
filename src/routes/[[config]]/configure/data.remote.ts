@@ -11,7 +11,7 @@ export const encodeConfig = query("unchecked", async (formValue: AddonConfig) =>
 
 export const decodeConfig = query("unchecked", async (configStr: string | undefined) => {
     Value.Assert(Type.Union([Type.String(), Type.Undefined()]), configStr);
-    if (configStr && !(await configIsFixed())) {
+    if (configStr && !configIsFixed) {
         try {
             return await configDeserialize(configStr);
         }

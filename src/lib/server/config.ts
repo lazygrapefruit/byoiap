@@ -20,9 +20,9 @@ const decoder = new CborDecoderBase();
 const compress = promisify(zlib.brotliCompress);
 const decompress = promisify(zlib.brotliDecompress);
 
-function loadServerConfig() {
+function loadServerConfig(): ServerConfig {
     const configStr = (() => {
-        const configPath = process.env.CONFIG_PATH || path.resolve("config.toml");
+        const configPath = process.env.CONFIG_PATH || path.resolve("byoiap.toml");
         try {
             console.info(`Loading: ${configPath}`);
             return readFileSync(configPath, "utf-8");
@@ -46,41 +46,29 @@ function loadServerConfig() {
     return Value.Create(ServerConfig);
 }
 
-// For some very dumb reason the server config seems to need to be
-// dynamically loaded even though though it is actually static.
-let _serverConfig: ReturnType<typeof loadServerConfig> | undefined;
-function getServerConfig() {
-    return _serverConfig ??= loadServerConfig();
-}
+const serverConfig = loadServerConfig();
 
-export async function configIsFixed() {
-    return !!(await getServerConfig()).named;
-}
-
-export async function configSerialize(config: AddonConfig) {
-    const serverConfig = await getServerConfig();
-
-    // Deal with named configs
-    if (serverConfig.named)
-        return "UNUSED_NAME";
-
-    // Deal with base64 configs
+async function configSerializeB64(config: AddonConfig) {
     const compressed = await compress(encoder.encode(Value.Clean(AddonConfig, config)));
     return compressed.toString("base64url");
 }
 
-export async function configDeserialize(configStr: string) {
-    const serverConfig = await getServerConfig();
+function configSerializeFixed() {
+    return "UNUSED_NAME";
+}
 
-    // Deal with named configs
-    if (serverConfig.named) {
-        const config = serverConfig.named[configStr];
-        assert(config);
-        console.log(config);
-        return config;
-    }
-
-    // Deal with base64 configs
+async function configDeserializeB64(configStr: string) {
     const decoded = decoder.decode(await decompress(Buffer.from(configStr, "base64url")));
     return Value.Parse(AddonConfig, decoded);
 }
+
+function configDeserializeFixed(configStr: string) {
+    assert(serverConfig.named);
+    const config = serverConfig.named[configStr];
+    assert(config);
+    return config;
+}
+
+export const configIsFixed = !!serverConfig.named;
+export const configSerialize = configIsFixed ? configSerializeFixed : configSerializeB64;
+export const configDeserialize = configIsFixed ? configDeserializeFixed : configDeserializeB64;

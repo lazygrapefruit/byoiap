@@ -1,0 +1,12 @@
+# [named.example]
+# indexer.id = "newznab"
+# indexer.url = "http://localhost:5076/api"
+# indexer.apiKey = "example key"
+# provider.id = "torbox"
+# provider.apiKey = "example key"
+# provider.proxyFile = true # Needed due to localhost indexer
+# shared.nextEpisodeCacheCount = 1
+# shared.pendingRetrySeconds = 180
+# shared.preferredQualities = []
+# shared.preferredAudioLanguages = ["en"]
+# shared.preferredSubtitleLanguages = ["en"]
