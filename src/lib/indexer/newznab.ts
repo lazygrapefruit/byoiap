@@ -1,4 +1,4 @@
-import { getShowData, MovieId, ShowId } from "$lib/media-id";
+import { getSeriesData } from "$lib/media-id";
 import { IndexedItem, type Indexer } from "./types";
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -270,15 +270,23 @@ function extractLanguages(str: string) {
     return matches.map(mapLanguageToCode);
 }
 
+const firstNumberExtractRegex = /\d+/;
+function extractSeasonOrEpisodeNumber(str: string) {
+    const firstNumber = firstNumberExtractRegex.exec(str);
+    if (!firstNumber) return undefined;
+    const result = Number.parseInt(firstNumber[0], 10);
+    return Number.isSafeInteger(result) ? result : undefined;
+}
+
 type AttrHandler = (target: Required<QueryParseData>["activeItem"], value: string) => void;
 
 const CORE_ATTR_HANDLERS: Record<string, AttrHandler> = {
     grabs: (target, value) => target.grabs = Number.parseInt(value),
     guid: (target, value) => target.guid = value,
-    episode: (target, value) => target.episode = Number.parseInt(value),
+    episode: (target, value) => target.episode = extractSeasonOrEpisodeNumber(value),
     language: (target, value) => target.languagesAudio.push(...extractLanguages(value)),
     password: (target, value) => target.password = value,
-    season: (target, value) => target.season = Number.parseInt(value),
+    season: (target, value) => target.season = extractSeasonOrEpisodeNumber(value),
     subs: (target, value) => target.languagesSubtitles.push(...extractLanguages(value)),
     thumbsup: (target, value) => target.votesUp = Number.parseInt(value),
     thumbsdown: (target, value) => target.votesDown = Number.parseInt(value),
@@ -392,8 +400,8 @@ export const newznabIndexer = {
         let searchIds: PotentialSearchIds = {
             imdbid: mediaId.imdbId,
         };
-        if (mediaId instanceof ShowId) {
-            const showDataPromise = getShowData(mediaId.imdbId);
+        if (mediaId.kind === "episode") {
+            const seriesDataPromise = getSeriesData(mediaId.imdbId);
 
             capsKey = "tv";
             url.searchParams.set("t", "tvsearch");
@@ -408,13 +416,13 @@ export const newznabIndexer = {
             // because fetching the show ids can take some time. In my testing this
             // is capable of saving 2-3 seconds.
             if (!(await capsPromise).tv?.includes("imdbid")) {
-                const showData = await showDataPromise;
-                searchIds.rid = showData.tvRageId;
-                searchIds.tvdbid = showData.tvdbId;
-                searchIds.tvmazeid = showData.tvMazeId;
+                const seriesData = await seriesDataPromise;
+                searchIds.rid = seriesData.tvRageId;
+                searchIds.tvdbid = seriesData.tvdbId;
+                searchIds.tvmazeid = seriesData.tvMazeId;
             }
         }
-        else if (mediaId instanceof MovieId) {
+        else if (mediaId.kind === "movie") {
             capsKey = "movie";
             url.searchParams.set("t", "movie");
         }

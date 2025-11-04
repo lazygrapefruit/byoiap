@@ -1,25 +1,52 @@
 import TTLCache from "@isaacs/ttlcache";
 import assert from "assert";
-import type { Writable } from "type-fest";
+import type { Promisable, Writable } from "type-fest";
 
-export class MovieId {
-    constructor(public readonly imdbId: string) { }
+export type MovieId = {
+    readonly kind: "movie";
+    readonly stremioId: string;
+    readonly imdbId: string;
 };
 
-export class ShowId {
-    public readonly season: number;
-    public readonly episode: number;
-    public readonly imdbId: string;
-
-    constructor(imdbId: string) {
-        const [show, season, episode] = imdbId.split(":");
-        this.imdbId = show;
-        this.season = Number.parseInt(season);
-        this.episode = Number.parseInt(episode);
-    }
+export type EpisodeId = {
+    readonly kind: "episode";
+    readonly stremioId: string;
+    readonly imdbId: string;
+    readonly season: number;
+    readonly episode: number;
 };
 
-export type MediaId = MovieId | ShowId;
+export type SeriesId = {
+    readonly kind: "series";
+    readonly imdbId: string;
+};
+
+export type MediaId = MovieId | EpisodeId;
+
+export function makeMovieId(stremioId: string): MovieId {
+    return {
+        kind: "movie",
+        stremioId,
+        imdbId: stremioId,
+    };
+}
+
+export function makeEpisodeId(stremioId: string): EpisodeId {
+    const [imdbId, season, episode] = stremioId.split(":");
+    return {
+        kind: "episode",
+        stremioId,
+        imdbId,
+        season: Number.parseInt(season),
+        episode: Number.parseInt(episode),
+    };
+}
+
+export function makeMediaId(stremioId: string): MediaId {
+    if (stremioId.includes(":"))
+        return makeEpisodeId(stremioId);
+    return makeMovieId(stremioId);
+}
 
 interface TvMazeShow {
     id: number;
@@ -39,7 +66,7 @@ interface CinemetaSeries {
     };
 }
 
-interface ShowData {
+interface SeriesData {
     readonly imdbId: string;
     readonly tvMazeId?: number;
     readonly tvRageId?: number;
@@ -48,7 +75,7 @@ interface ShowData {
 }
 
 const _shouldRevive = new Set<string>();
-const _showDataCache = new TTLCache<string, ShowData | Promise<ShowData>>({
+const _showDataCache = new TTLCache<string, Promisable<SeriesData>>({
     ttl: 1000 * 60 * 60 * 12, // 12 hours
     max: 10000, // Some bounds to prevent consuming infinite memory
     dispose: (value, key, reason) => {
@@ -57,11 +84,11 @@ const _showDataCache = new TTLCache<string, ShowData | Promise<ShowData>>({
         // Attempt to revive the item. Only applies to items that were evicted due
         // to being stale and were marked for revival.
         if (shouldRevive && reason === "stale")
-            fetchAndCacheShowData(key);
+            fetchAndCacheSeriesData(key);
     },
 });
 
-async function insertFromTvMaze(imdbId: string, data: Writable<ShowData>) {
+async function insertFromTvMaze(imdbId: string, data: Writable<SeriesData>) {
     const tvmazeLookup = await fetch(`https://api.tvmaze.com/lookup/shows?imdb=${imdbId}`);
     const lookupJson: TvMazeShow | null = await tvmazeLookup.json();
     if (!lookupJson) {
@@ -76,7 +103,7 @@ async function insertFromTvMaze(imdbId: string, data: Writable<ShowData>) {
         data.tvRageId = lookupJson.externals.tvrage;
 }
 
-async function insertFromCinemeta(imdbId: string, data: Writable<ShowData>) {
+async function insertFromCinemeta(imdbId: string, data: Writable<SeriesData>) {
     const cinemetaResponse = await fetch(`https://v3-cinemeta.strem.io/meta/series/${imdbId}.json`);
     const cinemetaJson: CinemetaSeries = await cinemetaResponse.json();
 
@@ -94,8 +121,8 @@ async function insertFromCinemeta(imdbId: string, data: Writable<ShowData>) {
 }
 
 // TODO: Handle exceptions and retries
-async function fetchShowData(imdbId: string): Promise<ShowData> {
-    const result: Writable<ShowData> = {
+async function fetchSeriesData(imdbId: string): Promise<SeriesData> {
+    const result: Writable<SeriesData> = {
         imdbId,
         episodesPerSeason: [],
     };
@@ -104,14 +131,14 @@ async function fetchShowData(imdbId: string): Promise<ShowData> {
     return result;
 }
 
-function fetchAndCacheShowData(imdbId: string) {
-    const fetcher = fetchShowData(imdbId);
+function fetchAndCacheSeriesData(imdbId: string) {
+    const fetcher = fetchSeriesData(imdbId);
     _showDataCache.set(imdbId, fetcher);
     fetcher.then(v => _showDataCache.set(imdbId, v));
     return fetcher;
 }
 
-export function getShowData(imdbId: string) {
+export function getSeriesData(imdbId: string) {
     _shouldRevive.add(imdbId);
-    return _showDataCache.get(imdbId) ?? fetchAndCacheShowData(imdbId);
+    return _showDataCache.get(imdbId) ?? fetchAndCacheSeriesData(imdbId);
 }

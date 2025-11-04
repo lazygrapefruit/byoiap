@@ -7,7 +7,7 @@ export interface BaseIndexerConfig {
 }
 
 export const IndexedItem = Type.Intersect([
-    Type.Omit(DownloadSource, ["kind"]),
+    Type.Omit(DownloadSource, ["kind", "mediaId"]),
     Type.Object({
         // The indexer is expected to produce these properties
         grabs: Type.ReadonlyOptional(Type.Integer()),

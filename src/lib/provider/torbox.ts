@@ -1,7 +1,10 @@
+import { makeMediaId, type MediaId, type SeriesId } from "$lib/media-id";
 import { DownloadSource, ResolveStatus, type Provider } from "./types";
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
+import assert from "assert";
 import { createHash } from "crypto";
+import { createXXHash32, createXXHash64 } from "hash-wasm";
 
 const ID = "torbox";
 const API_ROOT = "https://api.torbox.app";
@@ -55,9 +58,10 @@ type DownloadResult = Static<typeof DownloadResult>;
 const ListResult = Type.Object({
     success: Type.Boolean(),
     data: Type.Array(Type.Object({
-        id: Type.Integer(),
+        id: Type.Readonly(Type.Integer()),
         active: Type.ReadonlyOptional(Type.Boolean()),
         name: Type.ReadonlyOptional(Type.String()),
+        hash: Type.Readonly(Type.String()),
         download_present: Type.ReadonlyOptional(Type.Boolean()),
         files: Type.Array(Type.Object({
             id: Type.Integer(),
@@ -93,10 +97,64 @@ function deserializePendingPayload(data: string | undefined): PendingPayload | u
     };
 }
 
-function buildName(title: string, guid: string) {
-    const guidHash = createHash("md5").update(guid).digest("base64url");
-    return `${title} [${guidHash}]`;
-}
+// Because all usages are internally synchronous it is safe to reuse the same hashers repeatedly.
+const { formatName, makeMediaIdSegment, makeMediaIdSegmentEnding, mayMatch } = await (async () => {
+    const [guidHasher, idHasher] = await Promise.all([
+        createXXHash64(),
+        createXXHash32(),
+    ]);
+
+    const getIdSegment = (str: string, length: 1 | 2) => {
+        idHasher.init();
+        idHasher.update(str);
+        const { buffer, byteOffset } = idHasher.digest("binary");
+        return Buffer.from(buffer, byteOffset, length).toString("base64url").slice(0, length);
+    }
+
+    const makeMediaIdSegmentEnding = (mediaId: MediaId | SeriesId) => {
+        if (mediaId.kind === "movie")
+            return getIdSegment(mediaId.imdbId, 2);
+        return getIdSegment(mediaId.imdbId, 1);
+    };
+
+    const makeMediaIdSegment = (mediaId: MediaId) => {
+        if (mediaId.kind === "movie") {
+            return makeMediaIdSegmentEnding(mediaId);
+        }
+
+        if (mediaId.kind === "episode") {
+            const seriesSegment = makeMediaIdSegmentEnding(mediaId);
+            const episodeSegment = getIdSegment(mediaId.stremioId, 1);
+            return `${episodeSegment}${seriesSegment}`;
+        }
+        
+        // This should be unreachable
+        assert(false);
+    };
+
+    const formatName = (title: string, guid: string, mediaId: MediaId | ReturnType<typeof makeMediaIdSegment>) => {
+        guidHasher.init();
+        guidHasher.update(guid);
+        const guidHash = Buffer.from(guidHasher.digest("binary")).toString("base64url");
+
+        const mediaIdSegment = typeof mediaId === "string" ? mediaId : makeMediaIdSegment(mediaId);
+        return `${title} [${guidHash}@${mediaIdSegment}]`;
+    };
+
+    const mayMatch = (name: string, mediaId: MediaId | SeriesId | string) => {
+        const ending = typeof mediaId === "string" ? mediaId : makeMediaIdSegmentEnding(mediaId);
+        if (name.endsWith(`${ending}]`))
+            return true;
+
+        // To prevent removing possible matches that are just not named matching the expected pattern
+        // here we instead consider anything that doesn't match the format pattern at all as potentially
+        // a match.
+        const formatRegex = /\[[a-z0-9_-]{11}@[a-z0-9_-]{2}\]$/i;
+        return !formatRegex.test(name);
+    };
+
+    return { formatName, makeMediaIdSegment, makeMediaIdSegmentEnding, mayMatch };
+})();
 
 async function* myLibraryItems(config: TorboxConfig) {
     const LIMIT = 1000;
@@ -154,7 +212,7 @@ async function getDownloadNzb(config: TorboxConfig, source: DownloadSource): Pro
 }
 
 async function createDownload(config: TorboxConfig, source: DownloadSource, sync = true) {
-    const name = buildName(source.title, source.guid);
+    const name = formatName(source.title, source.guid, makeMediaId(source.mediaId));
 
     // Check if this has already been submitted. This is to help prevent duplicate downloads.
     // The reason it works is that the name is based on the guid, so if the name already exists
@@ -209,6 +267,7 @@ async function createDownload(config: TorboxConfig, source: DownloadSource, sync
 interface LibraryItemBase {
     readonly id: number;
     readonly name: string;
+    readonly hash: string;
 }
 
 interface LibraryItemDone extends LibraryItemBase {
@@ -226,14 +285,18 @@ interface LibraryItemDownloading extends LibraryItemBase {
 
 type LibraryItem = LibraryItemDone | LibraryItemFailed | LibraryItemDownloading;
 
-async function getMyLibrary(config: TorboxConfig) {
+async function getMyLibraryOfMedia(config: TorboxConfig, mediaId: MediaId | SeriesId) {
+    const mediaIdSegment = makeMediaIdSegmentEnding(mediaId);
+
     const libraryItems: LibraryItem[] = [];
     for await (const item of myLibraryItems(config)) {
         if (!item.name) continue;
+        if (!mayMatch(item.name, mediaIdSegment)) continue;
 
         const base: LibraryItemBase = {
             id: item.id,
             name: item.name,
+            hash: item.hash,
         };
         if (!item.download_present) {
             libraryItems.push({ ...base, status: item.active ? "downloading" : "failed" });
@@ -281,22 +344,19 @@ export const torboxProvider = {
     id: ID,
     configSchema: TorboxConfig,
 
-    buildCacheChecker: function(config) {
+    buildCacheChecker: function(config, checkerMediaId) {
         Value.Assert(TorboxConfig, config);
-        const myLibraryPromise = getMyLibrary(config);
+        const myLibraryPromise = getMyLibraryOfMedia(config, checkerMediaId);
 
-        return async (items) => {
+        return async (items, mediaId) => {
             if (items.length < 1) return [];
 
             const requests: Promise<Response>[] = [];
             const hashToItem = new Map<string, typeof items[0]>();
 
-            // Only bother checking the cache for links if not using the proxyFile setting because
-            // with proxyFile on things there won't be downloads by link anyway so all this cache
-            // checking would be wasted.
-            if (!config.proxyFile) {
+            {
                 for (const item of items)
-                    hashToItem.set(createHash("md5").update(item.url, "utf-8").digest("hex"), item);
+                    hashToItem.set(createHash("md5").update(item.url, "utf8").digest("hex"), item);
 
                 const listUrl = new URL("/v1/api/usenet/checkcached", API_ROOT);
                 listUrl.searchParams.set("format", "list");
@@ -330,15 +390,16 @@ export const torboxProvider = {
 
             // Build a lookup table of expected names to items so that the this can be used
             // to establish which items are already in the list of my cached items.
+            const mediaIdSegment = makeMediaIdSegment(mediaId);
             const nameToItem = new Map<string, typeof items[0]>();
             for (const item of items)
-                nameToItem.set(buildName(item.title, item.guid), item);
+                nameToItem.set(formatName(item.title, item.guid, mediaIdSegment), item);
 
             const result = new Set<typeof items[number]>();
             await Promise.all([
                 myLibraryPromise.then((libraryItems) => {
                     for (const libraryItem of libraryItems) {
-                        const item = nameToItem.get(libraryItem.name);
+                        const item = hashToItem.get(libraryItem.hash) ?? nameToItem.get(libraryItem.name);
                         if (!item) continue;
                         item.status = "failed"; // This is expected to be overwritten if valid
                         const pendingPayload: PendingPayload = {
@@ -376,7 +437,7 @@ export const torboxProvider = {
                         if (!file) continue;
 
                         result.add(item);
-                        item.status = "cached";
+                        item.status ??= "cached";
                         item.fileName = file.short_name;
                         item.mimetype = file.mimetype;
                         item.openSubtitlesHash = file.opensubtitles_hash ?? undefined;

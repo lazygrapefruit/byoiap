@@ -2,7 +2,7 @@ import { fallbackLangFlag } from "language-emoji";
 import type { AddonConfig } from "./config";
 import { ALL_INDEXERS } from "./indexer";
 import type { IndexedItem } from "./indexer/types";
-import { MovieId, ShowId, type MediaId } from "./media-id";
+import { makeMediaId } from "./media-id";
 import { ALL_PROVIDERS } from "./provider";
 import { displaySort } from "./title-utils";
 import { DownloadSource } from "./provider/types";
@@ -49,10 +49,16 @@ function languageCodeToFlag(code: string) {
     return (code && fallbackLangFlag(code)) || '�';
 }
 
-function itemToStream(config: HandlerConfig, item: IndexedItem, baseCacheNextUrl: URL | undefined) {
+function itemToStream(
+    config: HandlerConfig,
+    item: IndexedItem,
+    mediaId: string,
+    baseCacheNextUrl: URL | undefined
+) {
     const { configStr, origin } = config[INJECTED_CONFIG_KEY];
     const url = new URL(`${configStr}/resolve`, origin);
     url.searchParams.set("kind", "usenet");
+    url.searchParams.set("mediaId", mediaId);
 
     for (const key in DownloadSource.properties) {
         const value = item[key as keyof IndexedItem];
@@ -73,7 +79,7 @@ function itemToStream(config: HandlerConfig, item: IndexedItem, baseCacheNextUrl
     if (typeof item.grabs === "number")
         title += ` | Grabs: ${item.grabs}`;
     if (typeof item.size === "number")
-        title += ` | Size ${prettyBytes(item.size)}`;
+        title += ` | Size: ${prettyBytes(item.size)}`;
     if (typeof item.votesUp === "number" || typeof item.votesDown === "number")
         title += ` | Votes: ${item.votesUp ?? 0}-${item.votesDown ?? 0}`;
 
@@ -99,36 +105,29 @@ function itemToStream(config: HandlerConfig, item: IndexedItem, baseCacheNextUrl
     return result;
 }
 
-export async function streamHandler(args: StreamHandlerArgs) {
+export async function streamHandler(args: StreamHandlerArgs): Promise<{ streams: (ReturnType<typeof itemToStream>)[] }> {
     // console.log(`request for streams: `, args);
     const startTime = performance.now();
-    const { config, id, type } = args;
-    const streams: (ReturnType<typeof itemToStream>)[] = [];
+    const { config, id } = args;
 
-    let mediaId: MediaId;
-    if (type === "movie")
-        mediaId = new MovieId(id);
-    else if (type === "series")
-        mediaId = new ShowId(id);
-    else
-        throw new Error("Invalid media type");
+    const mediaId = makeMediaId(id);
 
     const indexer = ALL_INDEXERS.get(config.indexer.id);
     const provider = ALL_PROVIDERS.get(config.provider.id);
     if (!indexer || !provider || !mediaId)
-        return { streams };
+        return { streams: [] };
 
     // The cache checker is built prior to starting the query because it may start promises
     // that get used later. This allows them to resolve while the query is in flight.
-    const cacheChecker = provider.buildCacheChecker(config.provider);
+    const cacheChecker = provider.buildCacheChecker(config.provider, mediaId);
     const indexedItems = await indexer.query(config.indexer, mediaId);
 
     // Send out provider cache check as soon as possible. Ideally there is other work we can do while
     // waiting on it.
-    const cached = cacheChecker(indexedItems);
+    const cached = cacheChecker(indexedItems, mediaId);
 
     let baseCacheNextUrl: URL | undefined;
-    if (type === "series" && config.shared.nextEpisodeCacheCount > 0) {
+    if (mediaId.kind === "episode" && config.shared.nextEpisodeCacheCount > 0) {
         baseCacheNextUrl = new URL(
             `${config[INJECTED_CONFIG_KEY].configStr}/cachenext/${encodeURIComponent(id)}`, 
             config[INJECTED_CONFIG_KEY].origin
@@ -144,51 +143,49 @@ export async function streamHandler(args: StreamHandlerArgs) {
         urlToSortOrder[item.url] = index;
     });
 
-    // First, insert the cached items.
-    const addedUrls = new Set<string>();
-    for (const item of (await cached).sort((a, b) => urlToSortOrder[a.url] - urlToSortOrder[b.url])) {
-        const stream = itemToStream(config, item, baseCacheNextUrl);
-        streams.push(stream);
-        addedUrls.add(item.url);
-    }
+    const streamGroups: Record<string, (ReturnType<typeof itemToStream>)[]> = {
+        ready: [],
+        cached: [],
+        default: [],
+        failed: [],
+    };
 
-    // Now filter and insert the remainder
+    await cached; // I'm not directly using the cached items, but need to wait for them to populate any potential statuses
     {
         let currentQuality: number | undefined;
         let foundInQuality = 0;
-        const failedStreams: typeof streams = [];
 
         for (const item of indexedItems) {
-            if (addedUrls.has(item.url))
-                continue;
-
-            // All failed streams get added at the end and don't
-            // count toward the quality group so that additional
-            // options may rise up the ranks.
-            if (item.status === "failed") {
-                failedStreams.push(itemToStream(config, item, baseCacheNextUrl));
-                continue;
+            const stream = itemToStream(config, item, id, baseCacheNextUrl);
+            
+            let group: keyof typeof streamGroups;
+            switch (item.status) {
+                case "cached":      group = "cached"; break;
+                case "failed":      group = "failed"; break;
+                case "ready":       group = "ready";  break;
+                default:            group = "default"; break;
             }
 
-            if (currentQuality !== item.expectedQuality) {
-                currentQuality = item.expectedQuality;
-                foundInQuality = 0;
+            // Only the default group respects quality limits
+            if (group === "default") {
+                if (currentQuality !== item.expectedQuality) {
+                    currentQuality = item.expectedQuality;
+                    foundInQuality = 0;
+                }
+
+                ++foundInQuality;
+                if (foundInQuality > MAXIMUM_PER_QUALITY)
+                    continue;
+
+                if (foundInQuality > MINIMUM_PER_QUALITY && isBad(item))
+                    continue;
             }
 
-            ++foundInQuality;
-            if (foundInQuality > MAXIMUM_PER_QUALITY)
-                continue;
-
-            if (foundInQuality > MINIMUM_PER_QUALITY && isBad(item))
-                continue;
-
-            streams.push(itemToStream(config, item, baseCacheNextUrl));
+            streamGroups[group].push(stream);
         }
-
-        // Insert the failed streams at the end
-        streams.push(...failedStreams);
     }
 
+    const streams = [...streamGroups.ready, ...streamGroups.cached, ...streamGroups.default, ...streamGroups.failed];
     console.log(`[streams] Got ${streams.length} streams in ${(performance.now() - startTime).toFixed(0)}ms`);
     return { streams };
 }

@@ -72,7 +72,7 @@ export const GET: RequestHandler = async (event) => {
 
                 // Wait a few seconds and then redirect back to this same URL, but with a retry end. The reason to
                 // do this is that it prevents the client from timing out while still in the allowed retry window.
-                await setTimeout(Math.min(30 * 1000, timeRemaining, resolveAttemptTimeRemaining));
+                await setTimeout(Math.min(15 * 1000, timeRemaining, resolveAttemptTimeRemaining));
                 const retryUrl = new URL(url);
                 if (typeof result.payload === "string")
                     retryUrl.searchParams.set("pendingPayload", result.payload);

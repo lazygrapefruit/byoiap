@@ -1,4 +1,5 @@
 import type { IndexedItem } from '$lib/indexer/types';
+import type { MediaId, SeriesId } from '$lib/media-id';
 import { Type, type Static, type TObject } from '@sinclair/typebox';
 
 export interface BaseProviderConfig {
@@ -10,6 +11,7 @@ const DownloadSourceUsenet = Type.Object({
     url: Type.Readonly(Type.String()),
     password: Type.ReadonlyOptional(Type.String()),
     fileName: Type.Optional(Type.String()),
+    mediaId: Type.Readonly(Type.String()),
     pendingPayload: Type.Optional(Type.String()),
     title: Type.Readonly(Type.String()),
     guid: Type.Readonly(Type.String()),
@@ -38,7 +40,7 @@ export interface Provider<Config extends BaseProviderConfig = BaseProviderConfig
     readonly id: string;
     readonly configSchema: TObject;
 
-    buildCacheChecker(config: Config): (items: IndexedItem[]) => Promise<IndexedItem[]>;
+    buildCacheChecker(config: Config, mediaId: MediaId | SeriesId): (items: IndexedItem[], mediaId: MediaId) => Promise<IndexedItem[]>;
     precache(config: Config, source: DownloadSource): Promise<void>;
     resolve(config: Config, source: DownloadSource): Promise<ResolveResult>;
 }

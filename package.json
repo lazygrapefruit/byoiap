@@ -51,6 +51,7 @@
 		"@sinclair/typebox": "^0.34.41",
 		"change-case": "^5.4.4",
 		"fastest-levenshtein": "^1.0.16",
+		"hash-wasm": "^4.12.0",
 		"language-emoji": "^2.1.1",
 		"pretty-bytes": "^7.0.1",
 		"sax": "^1.4.1",

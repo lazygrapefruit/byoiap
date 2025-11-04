@@ -3,7 +3,7 @@ import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { ALL_PROVIDERS } from '$lib/provider';
 import { ALL_INDEXERS } from '$lib/indexer';
-import { getShowData, ShowId } from '$lib/media-id';
+import { getSeriesData, makeEpisodeId } from '$lib/media-id';
 import { compareDisplayScore, displayScore, getExpectedQuality, isCompoundEpisode } from '$lib/title-utils';
 import type { IndexedItem } from '$lib/indexer/types';
 
@@ -58,28 +58,30 @@ export const GET: RequestHandler = async ({ url, params }) => {
     if (!provider)
         errorAndLog(400, `${config.provider.id} does not have a registered provider`);
 
-    const cacheChecker = provider.buildCacheChecker(config.provider);
-    const showId = new ShowId(params.id);
-    const showData = await getShowData(showId.imdbId);
+    const episodeId = makeEpisodeId(params.id);
+    const cacheChecker = provider.buildCacheChecker(config.provider, {
+        kind: "series",
+        imdbId: episodeId.imdbId,
+    });
+    const seriesData = await getSeriesData(episodeId.imdbId);
 
-    let nextEpisodeSeason = showId.season;
-    let nextEpisodeNumber = showId.episode;
+    let nextEpisodeSeason = episodeId.season;
+    let nextEpisodeNumber = episodeId.episode;
     for (let i = 0; i < config.shared.nextEpisodeCacheCount; ++i) {
-        const episodesInSeason = showData.episodesPerSeason[nextEpisodeSeason] ?? 0;
+        const episodesInSeason = seriesData.episodesPerSeason[nextEpisodeSeason] ?? 0;
         if (nextEpisodeNumber < episodesInSeason) {
             nextEpisodeNumber += 1;
         }
         else {
             nextEpisodeSeason += 1;
             nextEpisodeNumber = 1;
-            if ((showData.episodesPerSeason[nextEpisodeSeason] ?? 0) < nextEpisodeNumber)
+            if ((seriesData.episodesPerSeason[nextEpisodeSeason] ?? 0) < nextEpisodeNumber)
                 errorAndLog(400, `Unable to find episode following ${params.id}`);
         }
 
-        // Construct the show id in a less silly way.
-        const nextEpisodeId = `${showId.imdbId}:${nextEpisodeSeason}:${nextEpisodeNumber}`;
-        const items = await indexer.query(config.indexer, new ShowId(nextEpisodeId));
-        const cachePromise = cacheChecker(items); // Populates status in the items
+        const nextEpisodeId = makeEpisodeId(`${episodeId.imdbId}:${nextEpisodeSeason}:${nextEpisodeNumber}`);
+        const items = await indexer.query(config.indexer, nextEpisodeId);
+        const cachePromise = cacheChecker(items, nextEpisodeId); // Populates status in the items
 
         const targetQuality = getExpectedQuality(title);
         const targetTitle = replaceEpisodeNumber(title, nextEpisodeSeason, nextEpisodeNumber);
@@ -147,6 +149,7 @@ export const GET: RequestHandler = async ({ url, params }) => {
 
         await provider.precache(config.provider, {
             kind: "usenet",
+            mediaId: nextEpisodeId.stremioId,
             ...bestItem,
         });
     }
