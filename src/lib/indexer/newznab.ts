@@ -1,5 +1,5 @@
 import { getSeriesData } from "$lib/media-id";
-import { IndexedItem, type Indexer } from "./types";
+import { IndexedItem, IndexerQueryFailure, type Indexer } from "./types";
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import sax from "sax";
@@ -433,7 +433,7 @@ export const newznabIndexer = {
         const searchCaps = (await capsPromise)[capsKey];
         const inserted = insertSearchIds(url.searchParams, searchCaps, searchIds);
         if (!inserted)
-            return [];
+            return IndexerQueryFailure.NoMatchingId;
 
         const limit = (await capsPromise).limit ?? 50;
         url.searchParams.set("limit", `${limit}`);

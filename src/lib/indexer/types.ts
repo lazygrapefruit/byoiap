@@ -34,9 +34,15 @@ export const IndexedItem = Type.Intersect([
 
 export type IndexedItem = Static<typeof IndexedItem>;
 
+export class IndexerQueryFailure {
+    static NoMatchingId = new IndexerQueryFailure("Failed to find ID matching indexer capabilities");
+
+    private constructor(readonly message: string) {}
+};
+
 export interface Indexer<Config extends BaseIndexerConfig = BaseIndexerConfig> {
     readonly id: string;
     readonly configSchema: TObject;
 
-    query(config: Config, mediaId: MediaId): Promise<IndexedItem[]>;
+    query(config: Config, mediaId: MediaId): Promise<IndexedItem[] | IndexerQueryFailure>;
 }

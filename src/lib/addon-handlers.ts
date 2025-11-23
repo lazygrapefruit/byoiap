@@ -1,7 +1,7 @@
 import { fallbackLangFlag } from "language-emoji";
 import type { AddonConfig } from "./config";
 import { ALL_INDEXERS } from "./indexer";
-import type { IndexedItem } from "./indexer/types";
+import { IndexerQueryFailure, type IndexedItem } from "./indexer/types";
 import { makeMediaId } from "./media-id";
 import { ALL_PROVIDERS } from "./provider";
 import { displaySort } from "./title-utils";
@@ -24,6 +24,22 @@ interface StreamHandlerArgs {
     readonly extra?: unknown;
     readonly config: HandlerConfig;
 }
+
+// https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/api/responses/stream.md
+interface StreamHandlerResult {
+    readonly streams: {
+        readonly behaviorHints?: {
+            readonly bingeGroup?: string;
+            readonly filename?: string;
+            readonly notWebReady?: boolean;
+            readonly videoHash?: string;
+            readonly videoSize?: number;
+        };
+        readonly name: string;
+        readonly title: string;
+        readonly url: string;
+    }[];
+};
 
 const MINIMUM_PER_QUALITY = 5;
 const MAXIMUM_PER_QUALITY = 20;
@@ -54,7 +70,7 @@ function itemToStream(
     item: IndexedItem,
     mediaId: string,
     baseCacheNextUrl: URL | undefined
-) {
+): StreamHandlerResult["streams"][number] {
     const { configStr, origin } = config[INJECTED_CONFIG_KEY];
     const url = new URL(`${configStr}/resolve`, origin);
     url.searchParams.set("kind", "usenet");
@@ -88,8 +104,7 @@ function itemToStream(
     if (item.status)
         name += `\n[${capitalCase(item.status)}]`;
 
-    // https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/api/responses/stream.md
-    const result = {
+    return {
         url: url.toString(),
         name,
         title,
@@ -101,11 +116,9 @@ function itemToStream(
             videoSize: item.size,
         },
     };
-
-    return result;
 }
 
-export async function streamHandler(args: StreamHandlerArgs): Promise<{ streams: (ReturnType<typeof itemToStream>)[] }> {
+export async function streamHandler(args: StreamHandlerArgs): Promise<StreamHandlerResult> {
     // console.log(`request for streams: `, args);
     const startTime = performance.now();
     const { config, id } = args;
@@ -120,10 +133,20 @@ export async function streamHandler(args: StreamHandlerArgs): Promise<{ streams:
     // The cache checker is built prior to starting the query because it may start promises
     // that get used later. This allows them to resolve while the query is in flight.
     const cacheChecker = provider.buildCacheChecker(config.provider, mediaId);
-    const indexedItems = await indexer.query(config.indexer, mediaId);
+    const queryResult = await indexer.query(config.indexer, mediaId);
+    if (queryResult instanceof IndexerQueryFailure) {
+        return {
+            streams: [{
+                name: "⚠️ byoiap\nQuery Failure",
+                title: queryResult.message,
+                url: "https://invalid",
+            }],
+        };
+    }
 
     // Send out provider cache check as soon as possible. Ideally there is other work we can do while
     // waiting on it.
+    const indexedItems = queryResult;
     const cached = cacheChecker(indexedItems, mediaId);
 
     let baseCacheNextUrl: URL | undefined;
